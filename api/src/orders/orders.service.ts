@@ -9,7 +9,7 @@ type QuoteItem = { productId: string; quantity: number };
 type PriceProduct = { id:string; name:string; price_rial:string; business_id:string };
 type Pricing = {
   business:{id:string;name:string;owner_id:string;commission_bps:number|null;region_id:string;region_name:string;delivery_fee_rial:string|null};
-  address:{id:string;label:string;address_text:string;instructions:string|null;region_id:string};
+  address:{id:string;label:string;address_text:string;instructions:string|null;latitude:string|null;longitude:string|null;region_id:string};
   lines:Array<{productId:string;productName:string;unitPriceRial:string;quantity:number;lineTotalRial:string}>;
   subtotal:bigint; deliveryFee:bigint; commissionBps:number; commission:bigint; total:bigint;
 };
@@ -45,7 +45,7 @@ export class OrdersService {
     const business = businessResult.rows[0] as Pricing['business'];
     const lockAddress = lock ? 'FOR SHARE OF a' : '';
     const addressResult = await queryable.query(
-      `SELECT a.id,a.label,a.address_text,a.instructions,r.id AS region_id
+      `SELECT a.id,a.label,a.address_text,a.instructions,a.latitude::text,a.longitude::text,r.id AS region_id
        FROM addresses a JOIN regions r ON r.id=a.region_id
        WHERE a.id=$1 AND a.user_id=$2 AND r.is_active=true ${lockAddress}`, [addressId,user.sub],
     );
@@ -113,9 +113,9 @@ export class OrdersService {
       }
       const price = await this.calculate(client,user,input.businessId,input.addressId,input.items,true);
       const inserted = await client.query(
-        `INSERT INTO orders(customer_id,business_id,address_id,delivery_address_snapshot,delivery_instructions_snapshot,status,payment_method,payment_status,subtotal_rial,delivery_fee_rial,commission_rial,commission_bps,total_rial,idempotency_key,request_hash)
-         VALUES($1,$2,$3,$4,$5,'PENDING_BUSINESS','CASH','PENDING',$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
-        [user.sub,price.business.id,price.address.id,price.address.address_text,price.address.instructions,price.subtotal.toString(),price.deliveryFee.toString(),price.commission.toString(),price.commissionBps,price.total.toString(),idempotencyKey,requestHash],
+        `INSERT INTO orders(customer_id,business_id,address_id,delivery_address_snapshot,delivery_instructions_snapshot,delivery_latitude_snapshot,delivery_longitude_snapshot,status,payment_method,payment_status,subtotal_rial,delivery_fee_rial,commission_rial,commission_bps,total_rial,idempotency_key,request_hash)
+         VALUES($1,$2,$3,$4,$5,$6,$7,'PENDING_BUSINESS','CASH','PENDING',$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
+        [user.sub,price.business.id,price.address.id,price.address.address_text,price.address.instructions,price.address.latitude,price.address.longitude,price.subtotal.toString(),price.deliveryFee.toString(),price.commission.toString(),price.commissionBps,price.total.toString(),idempotencyKey,requestHash],
       );
       const orderId = inserted.rows[0].id as string;
       for (const line of price.lines) await client.query(
@@ -153,7 +153,7 @@ export class OrdersService {
 
   private async orderDetails(queryable: { query: Pool['query'] } | PoolClient, user: Principal, id: string) {
     const result = await queryable.query(
-      `SELECT o.id,o.customer_id,o.business_id,o.status,o.payment_method,o.payment_status,o.subtotal_rial,o.delivery_fee_rial,o.commission_rial,o.commission_bps,o.total_rial,o.estimated_prep_minutes,o.delivery_address_snapshot,o.delivery_instructions_snapshot,o.created_at,o.updated_at,b.name AS business_name
+      `SELECT o.id,o.customer_id,o.business_id,o.status,o.payment_method,o.payment_status,o.subtotal_rial,o.delivery_fee_rial,o.commission_rial,o.commission_bps,o.total_rial,o.estimated_prep_minutes,o.delivery_address_snapshot,o.delivery_instructions_snapshot,o.delivery_latitude_snapshot,o.delivery_longitude_snapshot,o.created_at,o.updated_at,b.name AS business_name
        FROM orders o JOIN businesses b ON b.id=o.business_id WHERE o.id=$1 AND (o.customer_id=$2 OR b.owner_id=$2)`, [id,user.sub],
     );
     if (!result.rowCount) throw new NotFoundException('سفارش پیدا نشد.');
@@ -164,7 +164,7 @@ export class OrdersService {
       id:row.id,business:{id:row.business_id,name:row.business_name},status:row.status,estimatedPrepMinutes:row.estimated_prep_minutes,
       payment:{method:row.payment_method,status:row.payment_status},currency:'IRR',
       amounts:{subtotalRial:String(row.subtotal_rial),deliveryFeeRial:String(row.delivery_fee_rial),commissionRial:String(row.commission_rial),commissionBps:row.commission_bps,totalRial:String(row.total_rial)},
-      delivery:{addressText:row.delivery_address_snapshot,instructions:row.delivery_instructions_snapshot},
+      delivery:{addressText:row.delivery_address_snapshot,instructions:row.delivery_instructions_snapshot,latitude:row.delivery_latitude_snapshot===null?null:Number(row.delivery_latitude_snapshot),longitude:row.delivery_longitude_snapshot===null?null:Number(row.delivery_longitude_snapshot)},
       items:items.rows.map((item: {product_name:string;unit_price_rial:string;quantity:number;line_total_rial:string})=>({productName:item.product_name,unitPriceRial:String(item.unit_price_rial),quantity:item.quantity,lineTotalRial:String(item.line_total_rial)})),
       history:history.rows,createdAt:row.created_at,
     };
