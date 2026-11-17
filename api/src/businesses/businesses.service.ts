@@ -72,6 +72,23 @@ export class BusinessesService {
     return result.rows;
   }
 
+  async mineMenu(user: Principal, idInput: unknown) {
+    const businessId = this.id(idInput, 'شناسهٔ کسب‌وکار');
+    const result = await this.pool.query(
+      `SELECT c.id AS category_id,c.name AS category_name,c.sort_order,p.id AS product_id,p.name AS product_name,p.description AS product_description,p.price_rial::text AS price_rial,p.is_available
+       FROM businesses b LEFT JOIN menu_categories c ON c.business_id=b.id LEFT JOIN products p ON p.category_id=c.id
+       WHERE b.id=$1 AND b.owner_id=$2 ORDER BY c.sort_order,c.name,p.name`, [businessId,user.sub],
+    );
+    if (!result.rowCount) throw new NotFoundException('کسب‌وکار پیدا نشد یا دسترسی ندارید.');
+    const categories = new Map<string,{id:string;name:string;sortOrder:number;products:Array<{id:string;name:string;description:string|null;priceRial:string;isAvailable:boolean}>}>();
+    for (const row of result.rows) {
+      if (!row.category_id) continue;
+      if (!categories.has(row.category_id)) categories.set(row.category_id,{id:row.category_id,name:row.category_name,sortOrder:row.sort_order,products:[]});
+      if (row.product_id) categories.get(row.category_id)!.products.push({id:row.product_id,name:row.product_name,description:row.product_description,priceRial:row.price_rial,isAvailable:row.is_available});
+    }
+    return {businessId,categories:[...categories.values()]};
+  }
+
   async update(user: Principal, idInput: unknown, body: { name?: unknown; description?: unknown }) {
     const id = this.id(idInput);
     const name = typeof body?.name === 'string' ? body.name.trim() : null;

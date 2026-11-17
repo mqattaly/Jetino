@@ -16,6 +16,10 @@ export class BusinessesController {
   @UseGuards(JwtAuthGuard)
   mine(@Req() request: AuthRequest) { return this.businesses.mine(request.user); }
 
+  @Get('mine/:id/menu')
+  @UseGuards(JwtAuthGuard)
+  mineMenu(@Req() request: AuthRequest, @Param('id') id: string) { return this.businesses.mineMenu(request.user, id); }
+
   @Post()
   @UseGuards(JwtAuthGuard)
   create(@Req() request: AuthRequest, @Body() body: { name?: unknown; description?: unknown; regionSlug?: unknown }) {

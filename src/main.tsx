@@ -5,10 +5,11 @@ import AdminApp from './AdminApp';
 import { BusinessOrdersApp, CustomerOrdersApp } from './OperationsApp';
 import DriverApp from './DriverApp';
 import NotificationApp from './NotificationApp';
+import BusinessMenuApp from './BusinessMenuApp';
 import './style.css';
 
 const path = window.location.pathname;
-const Root = path.startsWith('/admin') ? AdminApp : path.startsWith('/business') ? BusinessOrdersApp : path.startsWith('/driver') ? DriverApp : path.startsWith('/notifications') ? NotificationApp : path.startsWith('/orders') ? CustomerOrdersApp : App;
+const Root = path.startsWith('/admin') ? AdminApp : path.startsWith('/business/menu') ? BusinessMenuApp : path.startsWith('/business') ? BusinessOrdersApp : path.startsWith('/driver') ? DriverApp : path.startsWith('/notifications') ? NotificationApp : path.startsWith('/orders') ? CustomerOrdersApp : App;
 createRoot(document.getElementById('root')!).render(<React.StrictMode><Root /></React.StrictMode>);
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
