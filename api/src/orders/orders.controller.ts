@@ -13,6 +13,6 @@ export class OrdersController {
   @Get('business/mine') businessMine(@Req() req: AuthRequest) { return this.orders.businessOrders(req.user); }
   @Get('mine') mine(@Req() req: AuthRequest) { return this.orders.mine(req.user); }
   @Post(':id/cancel') cancel(@Req() req: AuthRequest, @Param('id') id: string) { return this.orders.cancel(req.user,id); }
-  @Patch(':id/status') status(@Req() req: AuthRequest, @Param('id') id: string, @Body() body: { status?: unknown }) { return this.orders.businessTransition(req.user,id,body?.status); }
+  @Patch(':id/status') status(@Req() req: AuthRequest, @Param('id') id: string, @Body() body: { status?: unknown; preparationMinutes?: unknown }) { return this.orders.businessTransition(req.user,id,body?.status,body?.preparationMinutes); }
   @Get(':id') detail(@Req() req: AuthRequest, @Param('id') id: string) { return this.orders.detail(req.user,id); }
 }

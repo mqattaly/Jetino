@@ -133,14 +133,14 @@ export class OrdersService {
 
   async mine(user: Principal) {
     const result = await this.pool.query(
-      `SELECT id,business_id AS "businessId",status,payment_method AS "paymentMethod",payment_status AS "paymentStatus",total_rial AS "totalRial",created_at AS "createdAt" FROM orders WHERE customer_id=$1 ORDER BY created_at DESC LIMIT 100`, [user.sub],
+      `SELECT id,business_id AS "businessId",status,payment_method AS "paymentMethod",payment_status AS "paymentStatus",total_rial AS "totalRial",estimated_prep_minutes AS "estimatedPrepMinutes",created_at AS "createdAt" FROM orders WHERE customer_id=$1 ORDER BY created_at DESC LIMIT 100`, [user.sub],
     );
     return result.rows;
   }
 
   async businessOrders(user: Principal) {
     const result = await this.pool.query(
-      `SELECT o.id,o.status,o.payment_method AS "paymentMethod",o.payment_status AS "paymentStatus",o.total_rial AS "totalRial",o.created_at AS "createdAt",o.delivery_address_snapshot AS "deliveryAddress",u.phone AS "customerPhone"
+      `SELECT o.id,o.status,o.payment_method AS "paymentMethod",o.payment_status AS "paymentStatus",o.total_rial AS "totalRial",o.estimated_prep_minutes AS "estimatedPrepMinutes",o.created_at AS "createdAt",o.delivery_address_snapshot AS "deliveryAddress",u.phone AS "customerPhone"
        FROM orders o JOIN businesses b ON b.id=o.business_id JOIN users u ON u.id=o.customer_id WHERE b.owner_id=$1 ORDER BY o.created_at DESC LIMIT 100`, [user.sub],
     );
     return result.rows;
@@ -153,7 +153,7 @@ export class OrdersService {
 
   private async orderDetails(queryable: { query: Pool['query'] } | PoolClient, user: Principal, id: string) {
     const result = await queryable.query(
-      `SELECT o.id,o.customer_id,o.business_id,o.status,o.payment_method,o.payment_status,o.subtotal_rial,o.delivery_fee_rial,o.commission_rial,o.commission_bps,o.total_rial,o.delivery_address_snapshot,o.delivery_instructions_snapshot,o.created_at,o.updated_at,b.name AS business_name
+      `SELECT o.id,o.customer_id,o.business_id,o.status,o.payment_method,o.payment_status,o.subtotal_rial,o.delivery_fee_rial,o.commission_rial,o.commission_bps,o.total_rial,o.estimated_prep_minutes,o.delivery_address_snapshot,o.delivery_instructions_snapshot,o.created_at,o.updated_at,b.name AS business_name
        FROM orders o JOIN businesses b ON b.id=o.business_id WHERE o.id=$1 AND (o.customer_id=$2 OR b.owner_id=$2)`, [id,user.sub],
     );
     if (!result.rowCount) throw new NotFoundException('سفارش پیدا نشد.');
@@ -161,7 +161,7 @@ export class OrdersService {
     const items = await queryable.query('SELECT product_name,unit_price_rial,quantity,line_total_rial FROM order_items WHERE order_id=$1 ORDER BY id',[id]);
     const history = await queryable.query('SELECT from_status,to_status,reason,created_at FROM order_status_history WHERE order_id=$1 ORDER BY created_at,id',[id]);
     return {
-      id:row.id,business:{id:row.business_id,name:row.business_name},status:row.status,
+      id:row.id,business:{id:row.business_id,name:row.business_name},status:row.status,estimatedPrepMinutes:row.estimated_prep_minutes,
       payment:{method:row.payment_method,status:row.payment_status},currency:'IRR',
       amounts:{subtotalRial:String(row.subtotal_rial),deliveryFeeRial:String(row.delivery_fee_rial),commissionRial:String(row.commission_rial),commissionBps:row.commission_bps,totalRial:String(row.total_rial)},
       delivery:{addressText:row.delivery_address_snapshot,instructions:row.delivery_instructions_snapshot},
@@ -170,10 +170,13 @@ export class OrdersService {
     };
   }
 
-  async businessTransition(user: Principal, idInput: unknown, toInput: unknown) {
+  async businessTransition(user: Principal, idInput: unknown, toInput: unknown, preparationMinutesInput?: unknown) {
     if (typeof idInput !== 'string' || !uuidPattern.test(idInput)) throw new BadRequestException('شناسهٔ سفارش معتبر نیست.');
     if (!['CONFIRMED','REJECTED','PREPARING','READY_FOR_PICKUP'].includes(String(toInput))) throw new BadRequestException('وضعیت جدید مجاز نیست.');
-    const to = toInput as string; const client = await this.pool.connect();
+    const to = toInput as string;
+    const preparationMinutes = to === 'CONFIRMED' ? (preparationMinutesInput === undefined ? 30 : preparationMinutesInput) : null;
+    if (to === 'CONFIRMED' && (!Number.isInteger(preparationMinutes) || Number(preparationMinutes) < 5 || Number(preparationMinutes) > 240)) throw new BadRequestException('زمان آماده‌سازی باید بین ۵ تا ۲۴۰ دقیقه باشد.');
+    const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
       const result = await client.query(
@@ -183,13 +186,14 @@ export class OrdersService {
       const from = result.rows[0].status as string;
       const transitions: Record<string,string[]> = { PENDING_BUSINESS:['CONFIRMED','REJECTED'], CONFIRMED:['PREPARING'], PREPARING:['READY_FOR_PICKUP'] };
       if (!transitions[from]?.includes(to)) throw new ConflictException(`گذار از ${from} به ${to} مجاز نیست.`);
-      await client.query('UPDATE orders SET status=$2,updated_at=now() WHERE id=$1',[idInput,to]);
+      await client.query('UPDATE orders SET status=$2,estimated_prep_minutes=COALESCE($3,estimated_prep_minutes),updated_at=now() WHERE id=$1',[idInput,to,preparationMinutes]);
       await client.query('INSERT INTO order_status_history(order_id,from_status,to_status,actor_id) VALUES($1,$2,$3,$4)',[idInput,from,to,user.sub]);
       const notificationText:Record<string,[string,string]>={CONFIRMED:['سفارش تأیید شد','کسب‌وکار سفارش شما را پذیرفت.'],REJECTED:['سفارش پذیرفته نشد','کسب‌وکار امکان آماده‌سازی سفارش را نداشت.'],PREPARING:['آماده‌سازی آغاز شد','سفارش شما در حال آماده‌سازی است.'],READY_FOR_PICKUP:['سفارش آماده است','سفارش برای تحویل به پیک آماده شده است.']};
       const [title,message]=notificationText[to];
-      await notify(client,result.rows[0].customer_id,`ORDER_${to}`,title,message,{orderId:idInput,status:to});
+      const customerMessage=to==='CONFIRMED'?`کسب‌وکار سفارش را پذیرفت؛ زمان آماده‌سازی حدود ${preparationMinutes} دقیقه است.`:message;
+      await notify(client,result.rows[0].customer_id,`ORDER_${to}`,title,customerMessage,{orderId:idInput,status:to,preparationMinutes:to==='CONFIRMED'?preparationMinutes:undefined});
       await client.query(`INSERT INTO audit_logs(actor_id,action,entity_type,entity_id,metadata) VALUES($1,'ORDER_STATUS_CHANGED','ORDER',$2,$3::jsonb)`,[user.sub,idInput,JSON.stringify({from,to})]);
-      await client.query('COMMIT'); return {id:idInput,fromStatus:from,status:to};
+      await client.query('COMMIT'); return {id:idInput,fromStatus:from,status:to,estimatedPrepMinutes:to==='CONFIRMED'?preparationMinutes:null};
     } catch(error) { try { await client.query('ROLLBACK'); } catch { /* transaction already closed */ } throw error; }
     finally { client.release(); }
   }
