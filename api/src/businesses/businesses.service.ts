@@ -16,7 +16,8 @@ export class BusinessesService {
 
   async list(region = 'bandar-khamir', search = '') {
     const result = await this.pool.query(
-      `SELECT b.id,b.name,b.description,r.name AS region_name,b.created_at
+      `SELECT b.id,b.name,b.description,r.name AS region_name,r.slug AS region_slug,r.delivery_fee_rial::text AS delivery_fee_rial,
+       COALESCE(ARRAY(SELECT c.name FROM menu_categories c WHERE c.business_id=b.id ORDER BY c.sort_order,c.name),ARRAY[]::varchar[]) AS categories,b.created_at
        FROM businesses b JOIN regions r ON r.id=b.region_id
        WHERE b.status='ACTIVE' AND r.is_active=true AND r.slug=$1 AND ($2='' OR b.name ILIKE '%'||$2||'%')
        ORDER BY b.name`, [region.slice(0, 120), search.slice(0, 100)],
@@ -27,12 +28,12 @@ export class BusinessesService {
   async detail(idInput: unknown) {
     const id = this.id(idInput);
     const result = await this.pool.query(
-      `SELECT b.id,b.name,b.description,r.name AS region_name FROM businesses b JOIN regions r ON r.id=b.region_id
+      `SELECT b.id,b.name,b.description,r.name AS region_name,r.slug AS region_slug,r.delivery_fee_rial::text AS delivery_fee_rial FROM businesses b JOIN regions r ON r.id=b.region_id
        WHERE b.id=$1 AND b.status='ACTIVE' AND r.is_active=true`, [id],
     );
     if (!result.rowCount) throw new NotFoundException('کسب‌وکار پیدا نشد.');
     const categories = await this.pool.query(
-      `SELECT c.id,c.name,c.sort_order,COALESCE(json_agg(json_build_object('id',p.id,'name',p.name,'description',p.description,'priceRial',p.price_rial) ORDER BY p.name) FILTER (WHERE p.id IS NOT NULL), '[]') AS products
+      `SELECT c.id,c.name,c.sort_order,COALESCE(json_agg(json_build_object('id',p.id,'name',p.name,'description',p.description,'priceRial',p.price_rial::text) ORDER BY p.name) FILTER (WHERE p.id IS NOT NULL), '[]') AS products
        FROM menu_categories c LEFT JOIN products p ON p.category_id=c.id AND p.is_available=true
        WHERE c.business_id=$1 GROUP BY c.id ORDER BY c.sort_order,c.name`, [id],
     );

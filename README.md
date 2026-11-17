@@ -19,6 +19,7 @@ cd api
 cp .env.example .env
 npm install
 npm run db:migrate
+npm run db:seed:demo # اختیاری؛ یک رستوران نمونه برای تست رابط مشتری می‌سازد.
 npm run dev
 ```
 
