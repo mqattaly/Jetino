@@ -2,12 +2,13 @@ import { Inject, Injectable, BadRequestException, ConflictException, NotFoundExc
 import { createHash } from 'node:crypto';
 import { Pool, PoolClient } from 'pg';
 import { PG_POOL } from '../database/database.module';
+import { notify } from '../notifications/notifications.util';
 
 type Principal = { sub: string };
 type QuoteItem = { productId: string; quantity: number };
 type PriceProduct = { id:string; name:string; price_rial:string; business_id:string };
 type Pricing = {
-  business:{id:string;name:string;commission_bps:number|null;region_id:string;region_name:string;delivery_fee_rial:string|null};
+  business:{id:string;name:string;owner_id:string;commission_bps:number|null;region_id:string;region_name:string;delivery_fee_rial:string|null};
   address:{id:string;label:string;address_text:string;instructions:string|null;region_id:string};
   lines:Array<{productId:string;productName:string;unitPriceRial:string;quantity:number;lineTotalRial:string}>;
   subtotal:bigint; deliveryFee:bigint; commissionBps:number; commission:bigint; total:bigint;
@@ -36,7 +37,7 @@ export class OrdersService {
   private async calculate(queryable: { query: Pool['query'] }, user: Principal, businessId: string, addressId: string, items: QuoteItem[], lock = false): Promise<Pricing> {
     const lockBusiness = lock ? 'FOR SHARE OF b,r' : '';
     const businessResult = await queryable.query(
-      `SELECT b.id,b.name,b.commission_bps,r.id AS region_id,r.name AS region_name,r.delivery_fee_rial
+      `SELECT b.id,b.name,b.owner_id,b.commission_bps,r.id AS region_id,r.name AS region_name,r.delivery_fee_rial
        FROM businesses b JOIN regions r ON r.id=b.region_id
        WHERE b.id=$1 AND b.status='ACTIVE' AND r.is_active=true ${lockBusiness}`, [businessId],
     );
@@ -122,6 +123,7 @@ export class OrdersService {
         [orderId,line.productId,line.productName,line.unitPriceRial,line.quantity,line.lineTotalRial],
       );
       await client.query(`INSERT INTO order_status_history(order_id,from_status,to_status,actor_id,reason) VALUES($1,NULL,'PENDING_BUSINESS',$2,'Order created')`, [orderId,user.sub]);
+      await notify(client,price.business.owner_id,'ORDER_NEW','سفارش تازه دارید','یک سفارش جدید برای بررسی ثبت شده است.',{orderId});
       await client.query(`INSERT INTO audit_logs(actor_id,action,entity_type,entity_id,metadata) VALUES($1,'ORDER_CREATED','ORDER',$2,$3::jsonb)`, [user.sub,orderId,JSON.stringify({paymentMethod:'CASH',currency:'IRR'})]);
       const order = await this.orderDetails(client,user,orderId);
       await client.query('COMMIT'); return { ...order, replayed: false };
@@ -175,7 +177,7 @@ export class OrdersService {
     try {
       await client.query('BEGIN');
       const result = await client.query(
-        `SELECT o.id,o.status,b.owner_id FROM orders o JOIN businesses b ON b.id=o.business_id WHERE o.id=$1 FOR UPDATE OF o`, [idInput],
+        `SELECT o.id,o.status,o.customer_id,b.owner_id FROM orders o JOIN businesses b ON b.id=o.business_id WHERE o.id=$1 FOR UPDATE OF o`, [idInput],
       );
       if (!result.rowCount || result.rows[0].owner_id !== user.sub) throw new NotFoundException('سفارش پیدا نشد یا دسترسی ندارید.');
       const from = result.rows[0].status as string;
@@ -183,6 +185,9 @@ export class OrdersService {
       if (!transitions[from]?.includes(to)) throw new ConflictException(`گذار از ${from} به ${to} مجاز نیست.`);
       await client.query('UPDATE orders SET status=$2,updated_at=now() WHERE id=$1',[idInput,to]);
       await client.query('INSERT INTO order_status_history(order_id,from_status,to_status,actor_id) VALUES($1,$2,$3,$4)',[idInput,from,to,user.sub]);
+      const notificationText:Record<string,[string,string]>={CONFIRMED:['سفارش تأیید شد','کسب‌وکار سفارش شما را پذیرفت.'],REJECTED:['سفارش پذیرفته نشد','کسب‌وکار امکان آماده‌سازی سفارش را نداشت.'],PREPARING:['آماده‌سازی آغاز شد','سفارش شما در حال آماده‌سازی است.'],READY_FOR_PICKUP:['سفارش آماده است','سفارش برای تحویل به پیک آماده شده است.']};
+      const [title,message]=notificationText[to];
+      await notify(client,result.rows[0].customer_id,`ORDER_${to}`,title,message,{orderId:idInput,status:to});
       await client.query(`INSERT INTO audit_logs(actor_id,action,entity_type,entity_id,metadata) VALUES($1,'ORDER_STATUS_CHANGED','ORDER',$2,$3::jsonb)`,[user.sub,idInput,JSON.stringify({from,to})]);
       await client.query('COMMIT'); return {id:idInput,fromStatus:from,status:to};
     } catch(error) { try { await client.query('ROLLBACK'); } catch { /* transaction already closed */ } throw error; }
@@ -194,11 +199,12 @@ export class OrdersService {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      const result = await client.query('SELECT id,status FROM orders WHERE id=$1 AND customer_id=$2 FOR UPDATE',[idInput,user.sub]);
+      const result = await client.query('SELECT o.id,o.status,b.owner_id FROM orders o JOIN businesses b ON b.id=o.business_id WHERE o.id=$1 AND o.customer_id=$2 FOR UPDATE OF o',[idInput,user.sub]);
       if (!result.rowCount) throw new NotFoundException('سفارش پیدا نشد.');
       if (result.rows[0].status !== 'PENDING_BUSINESS') throw new ConflictException('پس از پاسخ کسب‌وکار، لغو خودکار در این نسخه مجاز نیست؛ با پشتیبانی تماس بگیرید.');
       await client.query(`UPDATE orders SET status='CANCELLED',updated_at=now() WHERE id=$1`,[idInput]);
       await client.query(`INSERT INTO order_status_history(order_id,from_status,to_status,actor_id,reason) VALUES($1,'PENDING_BUSINESS','CANCELLED',$2,'Customer cancellation')`,[idInput,user.sub]);
+      await notify(client,result.rows[0].owner_id,'ORDER_CANCELLED','سفارش لغو شد','مشتری سفارش را پیش از تأیید لغو کرد.',{orderId:idInput});
       await client.query(`INSERT INTO audit_logs(actor_id,action,entity_type,entity_id) VALUES($1,'ORDER_CANCELLED','ORDER',$2)`,[user.sub,idInput]);
       await client.query('COMMIT'); return {id:idInput,status:'CANCELLED'};
     } catch(error) { try { await client.query('ROLLBACK'); } catch { /* transaction already closed */ } throw error; }
