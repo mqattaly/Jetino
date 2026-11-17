@@ -6,6 +6,7 @@ import { BusinessesModule } from './businesses/businesses.module';
 import { AdminModule } from './admin/admin.module';
 import { AddressesModule } from './addresses/addresses.module';
 import { OrdersModule } from './orders/orders.module';
+import { DriversModule } from './drivers/drivers.module';
 
-@Module({ imports: [DatabaseModule, AuthModule, BusinessesModule, AdminModule, AddressesModule, OrdersModule], controllers: [HealthController] })
+@Module({ imports: [DatabaseModule, AuthModule, BusinessesModule, AdminModule, AddressesModule, OrdersModule, DriversModule], controllers: [HealthController] })
 export class AppModule {}

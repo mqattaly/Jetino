@@ -5,6 +5,10 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { AdminBusinessesController } from './admin-businesses.controller';
 import { AdminBusinessesService } from './admin-businesses.service';
+import { AdminDriversController } from './admin-drivers.controller';
+import { AdminDriversService } from './admin-drivers.service';
+import { AdminOrdersController } from './admin-orders.controller';
+import { AdminOrdersService } from './admin-orders.service';
 
-@Module({ controllers: [AdminSettingsController, AdminBusinessesController], providers: [AdminSettingsService, AdminBusinessesService, JwtAuthGuard, RolesGuard] })
+@Module({ controllers: [AdminSettingsController, AdminBusinessesController, AdminDriversController, AdminOrdersController], providers: [AdminSettingsService, AdminBusinessesService, AdminDriversService, AdminOrdersService, JwtAuthGuard, RolesGuard] })
 export class AdminModule {}
