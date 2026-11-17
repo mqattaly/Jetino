@@ -34,7 +34,7 @@ npm run dev
 npm run admin:promote
 ```
 
-پس از اعطای نقش، کاربر باید دوباره وارد شود تا JWT جدید نقش مدیر کل را داشته باشد. پنل گرافیکی تنظیم قیمت در `/admin/settings` در دسترس است و API محافظت‌شدهٔ `GET/PATCH /api/v1/admin/settings` فقط با نقش `SUPER_ADMIN` کار می‌کند. بدنهٔ PATCH نمونه: `{"deliveryFeeRial":600000,"defaultCommissionBps":1200}`. مبالغ ریال و کمیسیون برحسب basis point هستند (۱۰۰۰ = ۱۰٪). تغییرها در audit log ثبت می‌شوند.
+پس از اعطای نقش، کاربر باید دوباره وارد شود تا JWT جدید نقش مدیر کل را داشته باشد. پنل گرافیکی تنظیم قیمت و بررسی درخواست‌های کسب‌وکار در `/admin/settings` در دسترس است. APIهای محافظت‌شدهٔ `GET/PATCH /api/v1/admin/settings` و `GET /api/v1/admin/businesses?status=PENDING` و `PATCH /api/v1/admin/businesses/:id/status` فقط با نقش `SUPER_ADMIN` کار می‌کنند. بدنهٔ PATCH نمونه: `{"deliveryFeeRial":600000,"defaultCommissionBps":1200}`. مبالغ ریال و کمیسیون برحسب basis point هستند (۱۰۰۰ = ۱۰٪). تغییرها در audit log ثبت می‌شوند.
 
 ### نشانی و پیش‌فاکتور
 
