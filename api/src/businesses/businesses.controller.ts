@@ -47,6 +47,12 @@ export class BusinessesController {
     return this.businesses.createProduct(request.user, id, body);
   }
 
+  @Patch('products/:productId')
+  @UseGuards(JwtAuthGuard)
+  updateProduct(@Req() request: AuthRequest, @Param('productId') id: string, @Body() body: { name?: unknown; description?: unknown; priceRial?: unknown }) {
+    return this.businesses.updateProduct(request.user, id, body);
+  }
+
   @Patch('products/:productId/availability')
   @UseGuards(JwtAuthGuard)
   availability(@Req() request: AuthRequest, @Param('productId') id: string, @Body() body: { isAvailable?: unknown }) {

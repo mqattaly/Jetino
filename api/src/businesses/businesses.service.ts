@@ -140,6 +140,26 @@ export class BusinessesService {
     return result.rows[0];
   }
 
+  async updateProduct(user: Principal, productInput: unknown, body: { name?: unknown; description?: unknown; priceRial?: unknown }) {
+    const id = this.id(productInput, 'شناسهٔ محصول');
+    if (!body || (body.name === undefined && body.description === undefined && body.priceRial === undefined)) throw new BadRequestException('حداقل یک فیلد برای ویرایش لازم است.');
+    const name = body.name === undefined ? null : typeof body.name === 'string' ? body.name.trim() : '';
+    const description = body.description === undefined ? null : typeof body.description === 'string' ? body.description.trim() : '';
+    const rawPrice = body.priceRial;
+    const validPrice = rawPrice === undefined || (typeof rawPrice === 'string' && /^\d+$/.test(rawPrice)) || (typeof rawPrice === 'number' && Number.isSafeInteger(rawPrice) && rawPrice >= 0);
+    const price = rawPrice === undefined ? null : validPrice ? BigInt(rawPrice as string | number) : -1n;
+    if ((name !== null && (!name || name.length > 160)) || (description !== null && description.length > 1000) || !validPrice || (price !== null && (price < 0n || price > 9_000_000_000_000_000n))) throw new BadRequestException('اطلاعات یا قیمت محصول معتبر نیست. قیمت را به ریال وارد کنید.');
+    const result = await this.pool.query(
+      `UPDATE products p SET name=COALESCE($3,p.name),description=CASE WHEN $4 THEN $5 ELSE p.description END,price_rial=COALESCE($6,p.price_rial)
+       FROM menu_categories c,businesses b WHERE p.category_id=c.id AND c.business_id=b.id AND p.id=$1 AND b.owner_id=$2
+       RETURNING p.id,p.name,p.description,p.price_rial::text AS price_rial,p.is_available`,
+      [id,user.sub,name,body.description!==undefined,description,price?.toString()??null],
+    );
+    if (!result.rowCount) throw new NotFoundException('محصول پیدا نشد یا دسترسی ندارید.');
+    await this.audit(user.sub, 'MENU_PRODUCT_UPDATED', 'PRODUCT', id);
+    return result.rows[0];
+  }
+
   async setProductAvailability(user: Principal, productInput: unknown, available: unknown) {
     const id = this.id(productInput, 'شناسهٔ محصول');
     if (typeof available !== 'boolean') throw new BadRequestException('وضعیت موجودی معتبر نیست.');
