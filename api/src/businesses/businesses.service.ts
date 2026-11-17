@@ -72,6 +72,27 @@ export class BusinessesService {
     return result.rows;
   }
 
+  async setOrderability(user: Principal, idInput: unknown, acceptingOrders: unknown) {
+    const businessId = this.id(idInput, 'شناسهٔ کسب‌وکار');
+    if (typeof acceptingOrders !== 'boolean') throw new BadRequestException('وضعیت سفارش‌پذیری معتبر نیست.');
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const current = await client.query('SELECT status FROM businesses WHERE id=$1 AND owner_id=$2 FOR UPDATE', [businessId,user.sub]);
+      if (!current.rowCount) throw new NotFoundException('کسب‌وکار پیدا نشد یا دسترسی ندارید.');
+      const before = current.rows[0].status as string;
+      if (before !== 'ACTIVE' && before !== 'PAUSED') throw new ConflictException('فقط کسب‌وکار تأییدشده می‌تواند سفارش‌پذیری را تغییر دهد.');
+      const next = acceptingOrders ? 'ACTIVE' : 'PAUSED';
+      if (before !== next) {
+        await client.query('UPDATE businesses SET status=$2 WHERE id=$1', [businessId,next]);
+        await client.query(`INSERT INTO audit_logs(actor_id,action,entity_type,entity_id,metadata) VALUES($1,'BUSINESS_ORDERABILITY_CHANGED','BUSINESS',$2,$3::jsonb)`, [user.sub,businessId,JSON.stringify({from:before,to:next})]);
+      }
+      await client.query('COMMIT');
+      return {id:businessId,status:next,acceptingOrders:next==='ACTIVE'};
+    } catch(error) { try { await client.query('ROLLBACK'); } catch { /* transaction already closed */ } throw error; }
+    finally { client.release(); }
+  }
+
   async mineMenu(user: Principal, idInput: unknown) {
     const businessId = this.id(idInput, 'شناسهٔ کسب‌وکار');
     const result = await this.pool.query(

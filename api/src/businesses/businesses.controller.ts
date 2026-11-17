@@ -16,6 +16,10 @@ export class BusinessesController {
   @UseGuards(JwtAuthGuard)
   mine(@Req() request: AuthRequest) { return this.businesses.mine(request.user); }
 
+  @Patch('mine/:id/orderability')
+  @UseGuards(JwtAuthGuard)
+  orderability(@Req() request: AuthRequest, @Param('id') id: string, @Body() body: { acceptingOrders?: unknown }) { return this.businesses.setOrderability(request.user, id, body?.acceptingOrders); }
+
   @Get('mine/:id/menu')
   @UseGuards(JwtAuthGuard)
   mineMenu(@Req() request: AuthRequest, @Param('id') id: string) { return this.businesses.mineMenu(request.user, id); }
