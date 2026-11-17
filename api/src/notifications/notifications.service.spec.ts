@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
+import { notify } from './notifications.util';
 
 function serviceWith(query: (sql: string, values?: unknown[]) => Promise<{ rows: unknown[]; rowCount: number }>) {
   return new NotificationsService({ query } as never);
@@ -50,6 +51,20 @@ describe('NotificationsService', () => {
     );
     assert.match(executed!.sql, /WHERE id=\$1 AND user_id=\$2/);
     assert.deepEqual(executed!.values, ['123e4567-e89b-12d3-a456-426614174000', 'user-123']);
+  });
+
+  it('inserts notification payloads as JSON through the caller transaction', async () => {
+    let executed: { sql: string; values?: unknown[] } | undefined;
+    const client = {
+      query: async (sql: string, values?: unknown[]) => {
+        executed = { sql, values };
+        return { rows: [], rowCount: 1 };
+      },
+    };
+
+    await notify(client as never, 'user-123', 'ORDER_NEW', 'سفارش تازه', 'برای بررسی ثبت شد.', { orderId: 'order-456' });
+    assert.match(executed!.sql, /INSERT INTO notifications\(user_id,event_type,title,body,data\)/);
+    assert.deepEqual(executed!.values, ['user-123', 'ORDER_NEW', 'سفارش تازه', 'برای بررسی ثبت شد.', JSON.stringify({ orderId: 'order-456' })]);
   });
 
   it('marks only unread notifications for the current user as read', async () => {
