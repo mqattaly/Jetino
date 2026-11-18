@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: jetino
+          POSTGRES_USER: jetino
+          POSTGRES_PASSWORD: jetino_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jetino -d jetino"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://jetino:jetino_ci_only@localhost:5432/jetino?schema=public
+      DATABASE_URL_TEST: postgresql://jetino:jetino_ci_only@localhost:5432/jetino?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install storefront dependencies
+        run: npm ci
+      - name: Build storefront
+        run: npm run build
+      - name: Install API dependencies
+        working-directory: api
+        run: npm ci
+      - name: Build API
+        working-directory: api
+        run: npm run build
+      - name: Apply migrations
+        working-directory: api
+        run: npm run db:migrate
+      - name: Run API tests (unit plus the PostgreSQL flow test)
+        working-directory: api
+        run: npm test

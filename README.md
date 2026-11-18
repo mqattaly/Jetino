@@ -27,6 +27,14 @@ npm run db:seed:demo # اختیاری؛ یک رستوران نمونه برای 
 npm run dev
 ```
 
+آزمون‌های واحد با `cd api && npm test` بدون پایگاه داده اجرا می‌شوند. آزمون یکپارچهٔ `src/database/order-flow.integration.spec.ts` جریان واقعی سفارش نقدی (قیمت‌گذاری سرور، تکرار ایمن، آشپزخانه، تخصیص پیک، وصول وجه و تسویه) را روی PostgreSQL اجرا می‌کند و فقط وقتی `DATABASE_URL_TEST` تنظیم باشد از حالت skip خارج می‌شود؛ هر اجرا یک schema موقت می‌سازد و در پایان حذف می‌کند:
+
+```bash
+cd api && DATABASE_URL_TEST="postgresql://jetino:jetino_local_only@localhost:5432/jetino?schema=public" npm test
+```
+
+همین دستور همراه build فرانت‌اند و API در GitHub Actions (`.github/workflows/ci.yml`) با یک سرویس `postgres:16-alpine` اجرا می‌شود؛ بنابراین SQL مهاجرت‌ها و کوئری‌ها در هر push راستی‌آزمایی می‌شوند، نه فقط پارس متنی.
+
 سلامت API: `GET http://localhost:3000/api/v1/health`
 
 در صورت اجرای فرانت‌اند و API روی originهای متفاوت، `CORS_ORIGIN` باید origin فرانت‌اند باشد. برای ورود OTP، کلید کاوه‌نگار و نام قالب تأیید باید در محیط API تنظیم شود. هیچ کلید واقعی یا مقدار محرمانه‌ای را در فایل‌های نمونه یا Git ذخیره نکنید.

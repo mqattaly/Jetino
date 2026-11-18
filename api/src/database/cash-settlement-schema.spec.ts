@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-const directory = resolve(import.meta.dirname ?? '.', 'migrations');
+// specs run through `npm test` from the api package, which resolves migrations relative to that folder
+const directory = resolve(process.cwd(), 'src/database/migrations');
 const read = async (file: string) => await readFile(resolve(directory, file), 'utf8');
 
 describe('cash settlement schema', () => {
