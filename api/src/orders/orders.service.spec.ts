@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { BadRequestException } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 
 function service(connect: () => void) {
@@ -47,6 +48,94 @@ describe('OrdersService order placement acceptance',()=>{
     assert.equal(notice.values?.[0],'owner-1');
     assert.equal(JSON.parse(String(notice.values?.[4])).orderId,orderId);
     assert.equal(statements.at(-1)?.sql,'COMMIT');
+  });
+});
+
+describe('OrdersService idempotent placement',()=>{
+  it('replays the stored order for the same key and payload without inserting again',async()=>{
+    const statements:Array<{sql:string;values?:unknown[]}> = [];
+    const userId='123e4567-e89b-12d3-a456-426614174001';
+    const businessId='123e4567-e89b-12d3-a456-426614174002';
+    const addressId='123e4567-e89b-12d3-a456-426614174003';
+    const productId='123e4567-e89b-12d3-a456-426614174004';
+    const orderId='123e4567-e89b-12d3-a456-426614174005';
+    const requestHash=createHash('sha256').update(JSON.stringify({businessId,addressId,items:[{productId,quantity:2}],paymentMethod:'CASH'})).digest('hex');
+    const service=transactionalService(async(sql,values)=>{
+      statements.push({sql,values});
+      if(sql.startsWith('SELECT id,request_hash'))return{rows:[{id:orderId,request_hash:requestHash}],rowCount:1};
+      if(sql.startsWith('SELECT o.id,o.customer_id'))return{rows:[{id:orderId,customer_id:userId,business_id:businessId,status:'PENDING_BUSINESS',payment_method:'CASH',payment_status:'PENDING',subtotal_rial:'2000',delivery_fee_rial:'500',commission_rial:'200',commission_bps:1000,total_rial:'2500',estimated_prep_minutes:null,delivery_address_snapshot:'نشانی نمونه',delivery_instructions_snapshot:null,delivery_latitude_snapshot:null,delivery_longitude_snapshot:null,created_at:new Date('2026-11-17T10:00:00Z'),updated_at:new Date('2026-11-17T10:00:00Z'),business_name:'کسب‌وکار نمونه'}],rowCount:1};
+      if(sql.startsWith('SELECT product_name'))return{rows:[{product_name:'غذای نمونه',unit_price_rial:'1000',quantity:2,line_total_rial:'2000'}],rowCount:1};
+      if(sql.startsWith('SELECT from_status'))return{rows:[],rowCount:0};
+      return{rows:[],rowCount:1};
+    });
+    const result=await service.create({sub:userId},{businessId,addressId,items:[{productId,quantity:2}]},'repeat-key');
+    assert.equal(result.replayed,true);
+    assert.equal(result.id,orderId);
+    assert.equal(statements[1].sql,'SELECT pg_advisory_xact_lock(hashtextextended($1,0))');
+    assert.equal(statements[1].values?.[0],`${userId}:repeat-key`);
+    assert.ok(!statements.some(entry=>entry.sql.startsWith('INSERT INTO orders')));
+    assert.ok(!statements.some(entry=>entry.sql.includes('FROM businesses b')));
+    assert.equal(statements.at(-1)?.sql,'COMMIT');
+  });
+
+  it('rejects key reuse for a different basket and rolls the transaction back',async()=>{
+    const statements:Array<{sql:string;values?:unknown[]}> = [];
+    const service=transactionalService(async(sql,values)=>{
+      statements.push({sql,values});
+      if(sql.startsWith('SELECT id,request_hash'))return{rows:[{id:'order-1',request_hash:'a-different-hash'}],rowCount:1};
+      return{rows:[],rowCount:0};
+    });
+    await assert.rejects(service.create({sub:'123e4567-e89b-12d3-a456-426614174001'},{businessId:'123e4567-e89b-12d3-a456-426614174002',addressId:'123e4567-e89b-12d3-a456-426614174003',items:[{productId:'123e4567-e89b-12d3-a456-426614174004',quantity:1}]},'repeat-key'),ConflictException);
+    assert.ok(!statements.some(entry=>entry.sql.startsWith('INSERT INTO orders')));
+    assert.equal(statements.at(-1)?.sql,'ROLLBACK');
+  });
+
+  it('refuses non-cash payment and missing idempotency keys before touching the database',async()=>{
+    const noCard=service(()=>assert.fail('online payment must not reach the database'));
+    await assert.rejects(noCard.create({sub:'user'},{businessId:'123e4567-e89b-12d3-a456-426614174002',addressId:'123e4567-e89b-12d3-a456-426614174003',items:[{productId:'123e4567-e89b-12d3-a456-426614174004',quantity:1}],paymentMethod:'CARD'},'valid-key'),BadRequestException);
+    const noKey=service(()=>assert.fail('missing key must not reach the database'));
+    await assert.rejects(noKey.create({sub:'user'},{businessId:'123e4567-e89b-12d3-a456-426614174002',addressId:'123e4567-e89b-12d3-a456-426614174003',items:[{productId:'123e4567-e89b-12d3-a456-426614174004',quantity:1}]}),BadRequestException);
+  });
+});
+
+describe('OrdersService customer cancellation window',()=>{
+  it('cancels while the business has not answered and notifies the owner',async()=>{
+    const statements:Array<{sql:string;values?:unknown[]}> = [];
+    const service=transactionalService(async(sql,values)=>{
+      statements.push({sql,values});
+      if(sql.startsWith('SELECT o.id,o.status,b.owner_id'))return{rows:[{id:'order-1',status:'PENDING_BUSINESS',owner_id:'owner-1'}],rowCount:1};
+      return{rows:[],rowCount:1};
+    });
+    assert.deepEqual(await service.cancel({sub:'customer-1'},'123e4567-e89b-12d3-a456-426614174006'),{id:'123e4567-e89b-12d3-a456-426614174006',status:'CANCELLED'});
+    assert.ok(statements.some(entry=>entry.sql.startsWith(`UPDATE orders SET status='CANCELLED'`)));
+    const notice=statements.find(entry=>entry.sql.startsWith('INSERT INTO notifications'))!;
+    assert.equal(notice.values?.[0],'owner-1');
+    assert.equal(notice.values?.[1],'ORDER_CANCELLED');
+    assert.equal(statements.at(-1)?.sql,'COMMIT');
+  });
+
+  it('blocks cancellation after the business confirmed the order',async()=>{
+    const statements:Array<{sql:string;values?:unknown[]}> = [];
+    const service=transactionalService(async(sql,values)=>{
+      statements.push({sql,values});
+      if(sql.startsWith('SELECT o.id,o.status,b.owner_id'))return{rows:[{id:'order-1',status:'CONFIRMED',owner_id:'owner-1'}],rowCount:1};
+      return{rows:[],rowCount:1};
+    });
+    await assert.rejects(service.cancel({sub:'customer-1'},'123e4567-e89b-12d3-a456-426614174006'),ConflictException);
+    assert.ok(!statements.some(entry=>entry.sql.startsWith('UPDATE orders')));
+    assert.equal(statements.at(-1)?.sql,'ROLLBACK');
+  });
+
+  it('scopes cancellation to the order owner',async()=>{
+    const statements:Array<{sql:string;values?:unknown[]}> = [];
+    const service=transactionalService(async(sql,values)=>{
+      statements.push({sql,values});
+      if(sql.startsWith('SELECT o.id,o.status,b.owner_id'))return{rows:[],rowCount:0};
+      return{rows:[],rowCount:1};
+    });
+    await assert.rejects(service.cancel({sub:'other-customer'},'123e4567-e89b-12d3-a456-426614174006'),NotFoundException);
+    assert.deepEqual(statements[1].values,['123e4567-e89b-12d3-a456-426614174006','other-customer']);
+    assert.match(statements[1].sql,/o.customer_id=\$2 FOR UPDATE OF o/);
   });
 });
 
