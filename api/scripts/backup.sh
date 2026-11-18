@@ -18,6 +18,7 @@ dump="$out_dir/jetino-$stamp.dump"
 # against the database as it was at backup time instead of racing a live one.
 tables="$(psql "$source_url" -X -At -c "
   SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename NOT LIKE 'jetino_drill%' ORDER BY tablename")"
+[ -n "$tables" ] || { echo "no tables found in the public schema — apply the migrations before backing up" >&2; exit 1; }
 counts="$out_dir/jetino-$stamp.rows"
 : > "$counts.tmp"
 {

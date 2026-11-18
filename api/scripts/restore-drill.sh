@@ -56,9 +56,11 @@ restored_tables="$(psql "$connection" -X -At -c "SELECT count(*) FROM pg_tables 
 echo "drill: $(basename "$dump") -> $db_name on $admin_db (${restored_tables:-?} tables, $ledger migrations)"
 
 failures=0
+compared=0
 while IFS=$'\t' read -r table rows; do
   case "$table" in \#*|"") continue ;; esac
   got="$(psql "$connection" -X -At -c "SELECT count(*) FROM \"$table\"" 2>/dev/null || echo missing)"
+  compared=$((compared + 1))
   if [ "$got" = "missing" ]; then
     echo "FAIL $table is absent from the restored database"; failures=$((failures + 1))
   elif [ "$got" != "$rows" ]; then
@@ -66,8 +68,12 @@ while IFS=$'\t' read -r table rows; do
   fi
 done < <(grep -v '^#' "$counts")
 
+if [ "$compared" -eq 0 ]; then
+  echo "the backup recorded no tables, so there was nothing to compare — that is not a verified restore" >&2
+  exit 1
+fi
 if [ "$failures" -ne 0 ]; then
   echo "restore drill FAILED: $failures table(s) did not match the backup" >&2
   exit 1
 fi
-echo "restore drill passed: every table recorded by the backup was rebuilt with the same row count"
+echo "restore drill passed: $compared table(s) rebuilt with the same row counts as the backup"

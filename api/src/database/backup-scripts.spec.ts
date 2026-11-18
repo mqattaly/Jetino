@@ -49,6 +49,7 @@ describe('database backup scripts', () => {
     assert.match(backup, /sha256sum .*\.sha256/);
     assert.match(backup, /\.rows/);
     assert.match(backup, /count\(\*\) FROM/, 'the sidecar must record real row counts');
+    assert.match(backup, /no tables found in the public schema/, 'an empty backup must not be written as if it were one');
     assert.match(backup, /BACKUP_KEEP/, 'retention has to be a knob, not an accident');
     assert.match(backup, /ls -1t .* \| tail -n \+"\$\(\(keep \+ 1\)\)"/, 'only the newest dumps may survive');
   });
@@ -64,6 +65,7 @@ describe('database backup scripts', () => {
     assert.match(drill, /if ! pg_restore/, 'the checks decide, so a client newer than the server cannot fake a failure');
     assert.match(drill, /unrelated to client\/server version skew/, 'only the harmless preamble may be tolerated');
     assert.match(drill, /failures \+ 1/, 'every table is checked, not just the first');
+    assert.match(drill, /recorded no tables/, 'a drill that compared nothing may not report success');
   });
 
   it('only ever drop the throwaway database it created itself', async () => {
