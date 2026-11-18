@@ -20,6 +20,12 @@ export class BusinessesController {
   @UseGuards(JwtAuthGuard)
   orderability(@Req() request: AuthRequest, @Param('id') id: string, @Body() body: { acceptingOrders?: unknown }) { return this.businesses.setOrderability(request.user, id, body?.acceptingOrders); }
 
+  @Patch('mine/:id/location')
+  @UseGuards(JwtAuthGuard)
+  location(@Req() request: AuthRequest, @Param('id') id: string, @Body() body: { latitude?: unknown; longitude?: unknown }) {
+    return this.businesses.setLocation(request.user, id, body);
+  }
+
   @Get('mine/:id/menu')
   @UseGuards(JwtAuthGuard)
   mineMenu(@Req() request: AuthRequest, @Param('id') id: string) { return this.businesses.mineMenu(request.user, id); }

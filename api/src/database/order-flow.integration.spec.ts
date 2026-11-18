@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { Client, Pool } from 'pg';
+import { NotFoundException } from '@nestjs/common';
 import { OrdersService } from '../orders/orders.service';
 import { AdminOrdersService } from '../admin/admin-orders.service';
 import { AdminReportsService } from '../admin/admin-reports.service';
 import { DriversService } from '../drivers/drivers.service';
+import { BusinessesService } from '../businesses/businesses.service';
+import { DeliveryService } from '../delivery/delivery.service';
 
 /**
  * End-to-end flow against a real PostgreSQL instance. It is skipped unless
@@ -44,6 +47,8 @@ suite('cash order flow against PostgreSQL', () => {
   let adminOrders: AdminOrdersService;
   let reports: AdminReportsService;
   let drivers: DriversService;
+  let businesses: BusinessesService;
+  let delivery: DeliveryService;
 
   before(async () => {
     const admin = new Client({ connectionString: databaseUrl });
@@ -72,6 +77,8 @@ suite('cash order flow against PostgreSQL', () => {
     adminOrders = new AdminOrdersService(pool);
     reports = new AdminReportsService(pool);
     drivers = new DriversService(pool);
+    businesses = new BusinessesService(pool);
+    delivery = new DeliveryService(pool);
   });
 
   after(async () => {
@@ -130,6 +137,34 @@ suite('cash order flow against PostgreSQL', () => {
       /منطقهٔ خدمت/,
     );
     assert.equal((await rows(`SELECT id FROM orders`)).length, 1);
+  });
+
+  it('measures the run from the shop pin to the customer door', async () => {
+    const order = await placeOrder('flow-route');
+
+    const halfPin = await businesses.setLocation({ sub: uuids.owner }, uuids.business, { latitude: 27.2005 }).catch(error => (error as Error).message);
+    assert.match(String(halfPin), /هر دو/, 'a half coordinate is worse than none');
+    assert.equal((await rows(`SELECT latitude,longitude FROM businesses WHERE id=$1`, [uuids.business]))[0].latitude, null);
+
+    await assert.rejects(businesses.setLocation({ sub: uuids.customer }, uuids.business, { latitude: 27.2, longitude: 55.7 }), NotFoundException, 'only the owner may move the shop pin');
+
+    const unroutable = await delivery.estimateForOrder({ sub: uuids.customer }, order.id);
+    assert.equal(unroutable.available, false);
+    if (!unroutable.available) assert.equal(unroutable.reason, 'BUSINESS_LOCATION_MISSING');
+
+    const pinned = await businesses.setLocation({ sub: uuids.owner }, uuids.business, { latitude: 27.2005, longitude: 55.7005 });
+    assert.equal(Number(pinned.latitude), 27.2005);
+    const estimate = await delivery.estimateForOrder({ sub: uuids.customer }, order.id);
+    assert.equal(estimate.available, true);
+    if (estimate.available) {
+      assert.ok(estimate.distanceMeters > 40 && estimate.distanceMeters < 400, `unexpected short hop: ${estimate.distanceMeters} m`);
+      assert.ok(estimate.durationMinutes >= 1);
+      assert.equal(estimate.cached, false);
+    }
+    await pool.query(`UPDATE businesses SET latitude=NULL,longitude=NULL WHERE id=$1`, [uuids.business]);
+    const cleared = await delivery.estimateForOrder({ sub: uuids.customer }, order.id);
+    assert.equal(cleared.available, false, 'clearing the pin must not leave a stale cached route');
+    assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM orders WHERE id=$1`, [order.id]))[0].c, 1);
   });
 
   it('walks a cash order through the kitchen, the courier and the settlement book', async () => {

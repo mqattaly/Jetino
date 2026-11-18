@@ -7,6 +7,15 @@ import { resolve } from 'node:path';
 const directory = resolve(process.cwd(), 'src/database/migrations');
 const read = async (file: string) => await readFile(resolve(directory, file), 'utf8');
 
+describe('business location schema', () => {
+  it('stores the shop pin as a validated coordinate pair', async () => {
+    const sql = await read('012_business_location.sql');
+    assert.match(sql, /ALTER TABLE businesses ADD COLUMN IF NOT EXISTS latitude numeric\(9,6\), ADD COLUMN IF NOT EXISTS longitude numeric\(9,6\)/);
+    assert.match(sql, /ADD CONSTRAINT businesses_location_pair_check/);
+    assert.match(sql, /\(latitude IS NULL AND longitude IS NULL\) OR \(latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180\)/);
+  });
+});
+
 describe('cash settlement schema', () => {
   it('creates the settlement table with the columns the admin report writes', async () => {
     const sql = await read('011_cash_settlements.sql');
@@ -37,6 +46,8 @@ describe('cash settlement schema', () => {
       assert.ok(rest.length > 0, `migration ${file} must have a name after the prefix`);
       assert.equal(Number(prefix), index + 1, `migration numbering must be gap-free, got ${prefix} at position ${index + 1}`);
     });
-    assert.equal(files.at(-1), '011_cash_settlements.sql', 'the settlement schema must be applied after the collection table');
+    const position = (name: string) => files.indexOf(name);
+    assert.ok(position('007_delivery_cash_collection.sql') < position('011_cash_settlements.sql'), 'settlements are recorded against collected cash');
+    assert.ok(position('011_cash_settlements.sql') < position('012_business_location.sql'), 'new schema is applied after the settlement tables');
   });
 });

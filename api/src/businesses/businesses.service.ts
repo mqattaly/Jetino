@@ -14,6 +14,13 @@ export class BusinessesService {
     return input;
   }
 
+  private coordinate(value: unknown, min: number, max: number): number | null {
+    if (value === undefined || value === null || value === '') return null;
+    const parsed = typeof value === 'number' ? value : Number(String(value).trim());
+    if (!Number.isFinite(parsed) || parsed < min || parsed > max) throw new BadRequestException('مختصات مکانی معتبر نیست.');
+    return Math.round(parsed * 1e6) / 1e6;
+  }
+
   async list(region = 'bandar-khamir', search = '') {
     const result = await this.pool.query(
       `SELECT b.id,b.name,b.description,r.name AS region_name,r.slug AS region_slug,r.delivery_fee_rial::text AS delivery_fee_rial,
@@ -67,7 +74,7 @@ export class BusinessesService {
 
   async mine(user: Principal) {
     const result = await this.pool.query(
-      `SELECT id,name,description,status,region_id,commission_bps,created_at FROM businesses WHERE owner_id=$1 ORDER BY created_at DESC`, [user.sub],
+      `SELECT id,name,description,status,region_id,commission_bps,latitude,longitude,created_at FROM businesses WHERE owner_id=$1 ORDER BY created_at DESC`, [user.sub],
     );
     return result.rows;
   }
@@ -90,6 +97,35 @@ export class BusinessesService {
       await client.query('COMMIT');
       return {id:businessId,status:next,acceptingOrders:next==='ACTIVE'};
     } catch(error) { try { await client.query('ROLLBACK'); } catch { /* transaction already closed */ } throw error; }
+    finally { client.release(); }
+  }
+
+  /**
+   * The shop pin is what turns a delivery into a measured route, so it is stored
+   * next to the business and only the owner may move it. Both coordinates must
+   * arrive together (or both empty to clear the pin) because a half location is
+   * worse than none.
+   */
+  async setLocation(user: Principal, idInput: unknown, body: { latitude?: unknown; longitude?: unknown }) {
+    const id = this.id(idInput, 'شناسهٔ کسب‌وکار');
+    const latitude = this.coordinate(body?.latitude, -90, 90);
+    const longitude = this.coordinate(body?.longitude, -180, 180);
+    if ((latitude === null) !== (longitude === null)) throw new BadRequestException('عرض و طول جغرافیایی باید هر دو وارد یا هر دو خالی شوند.');
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const current = await client.query('SELECT latitude,longitude FROM businesses WHERE id=$1 AND owner_id=$2 FOR UPDATE', [id, user.sub]);
+      if (!current.rowCount) throw new NotFoundException('کسب‌وکار پیدا نشد یا دسترسی ندارید.');
+      const result = await client.query(
+        `UPDATE businesses SET latitude=$3,longitude=$4 WHERE id=$1 AND owner_id=$2 RETURNING id,name,latitude,longitude`,
+        [id, user.sub, latitude, longitude],
+      );
+      await client.query(`INSERT INTO audit_logs(actor_id,action,entity_type,entity_id,metadata) VALUES($1,'BUSINESS_LOCATION_UPDATED','BUSINESS',$2,$3::jsonb)`, [
+        user.sub, id, JSON.stringify({ before: current.rows[0], after: result.rows[0] }),
+      ]);
+      await client.query('COMMIT');
+      return result.rows[0];
+    } catch (error) { try { await client.query('ROLLBACK'); } catch { /* transaction already closed */ } throw error; }
     finally { client.release(); }
   }
 
