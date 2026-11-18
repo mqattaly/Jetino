@@ -11,6 +11,8 @@ import { DriversService } from '../drivers/drivers.service';
 import { BusinessesService } from '../businesses/businesses.service';
 import { DeliveryService } from '../delivery/delivery.service';
 import { AdminAuditService } from '../admin/admin-audit.service';
+import { FeedbackService } from '../support/feedback.service';
+import { SupportService } from '../support/support.service';
 
 /**
  * End-to-end flow against a real PostgreSQL instance. It is skipped unless
@@ -34,6 +36,7 @@ const uuids = {
   driverProfile: 'a0000000-0000-4000-8000-000000000009',
   otherRegion: 'a0000000-0000-4000-8000-00000000000a',
   otherAddress: 'a0000000-0000-4000-8000-00000000000b',
+  stranger: 'a0000000-0000-4000-8000-00000000000c',
 };
 
 const PRICE = 3200000n; const QUANTITY = 2; const DELIVERY_FEE = 500000n; const COMMISSION_BPS = 1000;
@@ -51,6 +54,8 @@ suite('cash order flow against PostgreSQL', () => {
   let businesses: BusinessesService;
   let delivery: DeliveryService;
   let audit: AdminAuditService;
+  let feedback: FeedbackService;
+  let support: SupportService;
 
   before(async () => {
     const admin = new Client({ connectionString: databaseUrl });
@@ -64,7 +69,7 @@ suite('cash order flow against PostgreSQL', () => {
       const regionId = region.rows[0].id as string;
       await admin.query(`UPDATE regions SET delivery_fee_rial=$2 WHERE id=$1`, [regionId, DELIVERY_FEE.toString()]);
       await admin.query(`INSERT INTO platform_settings(key,value_int) VALUES('default_commission_bps',$1) ON CONFLICT(key) DO UPDATE SET value_int=EXCLUDED.value_int`, [COMMISSION_BPS]);
-      await admin.query(`INSERT INTO users(id,phone,display_name) VALUES($1,'09120000001','مشتری آزمون'),($2,'09120000002','صاحب کسب‌وکار'),($3,'09120000003','راننده آزمون'),($4,'09120000004','مدیر آزمون')`, [uuids.customer, uuids.owner, uuids.driver, uuids.admin]);
+      await admin.query(`INSERT INTO users(id,phone,display_name) VALUES($1,'09120000001','مشتری آزمون'),($2,'09120000002','صاحب کسب‌وکار'),($3,'09120000003','راننده آزمون'),($4,'09120000004','مدیر آزمون'),($5,'09120000005','بی‌ربط')`, [uuids.customer, uuids.owner, uuids.driver, uuids.admin, uuids.stranger]);
       await admin.query(`INSERT INTO user_roles(user_id,role) VALUES($1,'CUSTOMER'),($2,'BUSINESS_OWNER'),($3,'DRIVER'),($4,'SUPER_ADMIN')`, [uuids.customer, uuids.owner, uuids.driver, uuids.admin]);
       await admin.query(`INSERT INTO businesses(id,owner_id,region_id,name,status,commission_bps) VALUES($1,$2,$3,'رستوران آزمون','ACTIVE',$4)`, [uuids.business, uuids.owner, regionId, COMMISSION_BPS]);
       await admin.query(`INSERT INTO menu_categories(id,business_id,name,sort_order) VALUES($1,$2,'غذای گرم',1)`, [uuids.category, uuids.business]);
@@ -82,6 +87,8 @@ suite('cash order flow against PostgreSQL', () => {
     businesses = new BusinessesService(pool);
     delivery = new DeliveryService(pool);
     audit = new AdminAuditService(pool);
+    feedback = new FeedbackService(pool);
+    support = new SupportService(pool);
   });
 
   after(async () => {
@@ -299,5 +306,82 @@ suite('cash order flow against PostgreSQL', () => {
     assert.equal((await orders.detail({ sub: uuids.customer }, answered.id)).status, 'CONFIRMED');
 
     await assert.rejects(orders.cancel({ sub: uuids.owner }, answered.id), /پیدا نشد/);
+  });
+
+  /**
+   * Feedback and support are the newest SQL in the system, and their interesting parts are
+   * database features — `ON CONFLICT`, a partial unique index, `FOR UPDATE OF o` — that a
+   * stubbed pool cannot prove. This runs on the order the flow above already delivered, so no
+   * extra order is placed and the money counts in that test stay true.
+   */
+  it('rates a delivered order and argues a support thread in real SQL', async () => {
+    const delivered = await rows(`SELECT id FROM orders WHERE status='DELIVERED' ORDER BY created_at LIMIT 1`);
+    const orderId = delivered[0].id as string;
+
+    const customer = { sub: uuids.customer, roles: ['CUSTOMER'] };
+    const staff = { sub: uuids.admin, roles: ['SUPER_ADMIN'] };
+    const shop = { sub: uuids.owner, roles: ['BUSINESS_OWNER'] };
+
+    await assert.rejects(feedback.save(shop, orderId, { businessRating: 4 }), /پیدا نشد یا به این حساب مربوط نیست/);
+    const first = await feedback.save(customer, orderId, { businessRating: 2, driverRating: 5, comment: 'غذا سرد رسید   ولی بسته‌بندی خوب بود.' });
+    assert.equal(first.created, true);
+    assert.equal(first.comment, 'غذا سرد رسید ولی بسته‌بندی خوب بود.', 'runs of whitespace are folded before storing');
+    assert.equal((await feedback.forOrder(customer, orderId))?.id, first.id);
+
+    const revised = await feedback.save(customer, orderId, { businessRating: 4, driverRating: 3, comment: 'دفعهٔ دوم راضی‌کننده بود.' });
+    assert.deepEqual({ id: revised.id, created: revised.created }, { id: first.id, created: false }, 'an edit replaces the same row');
+    assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM order_feedback WHERE order_id=$1`, [orderId]))[0].c, 1);
+    assert.equal((await feedback.forOrder(shop, orderId))?.businessRating, 4, 'the shop reads the thread of its own order');
+
+    const report = await feedback.forBusiness(shop, uuids.business, '5', '0');
+    assert.deepEqual({ count: report.feedbackCount, average: report.averageBusinessRating, attention: report.needsAttention }, { count: 1, average: 4, attention: 0 }, 'the revision must not be counted twice');
+    assert.equal(report.items[0].authorName, 'مشتری آزمون');
+    await assert.rejects(feedback.forBusiness({ sub: uuids.driver, roles: ['DRIVER'] }, uuids.business), NotFoundException);
+    const driving = await feedback.forDriver({ sub: uuids.driver, roles: ['DRIVER'] });
+    assert.deepEqual({ count: driving.feedbackCount, average: driving.averageDriverRating }, { count: 1, average: 3 }, 'the courier is scored on the revised value, not the first one');
+    await feedback.save(customer, orderId, { businessRating: 4, comment: 'بدون نظر دربارهٔ پیک.' });
+    assert.deepEqual(await feedback.forDriver({ sub: uuids.driver, roles: ['DRIVER'] }).then(row => ({ count: row.feedbackCount, average: row.averageDriverRating })), { count: 0, average: null }, 'PUT replaces the record, so leaving the courier stars out clears them');
+    await feedback.save(customer, orderId, { businessRating: 4, driverRating: 3, comment: 'دفعهٔ دوم راضی‌کننده بود.' });
+
+    const notices = await rows(`SELECT COUNT(*)::int AS c FROM notifications WHERE user_id=$1 AND event_type='ORDER_FEEDBACK'`, [uuids.owner]);
+    assert.equal(notices[0].c, 1, 'a two-star comment reaches the owner once, and the edits do not ping again');
+    assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM notifications WHERE user_id=$1 AND event_type='DRIVER_FEEDBACK'`, [uuids.driver]))[0].c, 1);
+
+    const ticket = await support.open(customer, { orderId, message: 'سفارش دیر و سرد رسید؛ می‌خواهم مبلغ ارسال برگردد.' });
+    assert.equal(ticket.status, 'OPEN');
+    await assert.rejects(support.open(customer, { orderId, message: 'همان مشکل را دوباره می‌نویسم تا در صف بماند.' }), /گفت‌وگوی بازی/);
+    assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM support_tickets WHERE order_id=$1`, [orderId]))[0].c, 1);
+
+    const thread = await support.detail(shop, ticket.id);
+    assert.equal(thread.canReply, true, 'the shop is a party to the order');
+    assert.equal(thread.canChangeStatus, false, 'but it is not support staff');
+    await assert.rejects(support.setStatus(shop, ticket.id, { status: 'CLOSED' }), /کادر پشتیبانی|فقط/);
+    await assert.rejects(support.detail({ sub: uuids.stranger, roles: ['CUSTOMER'] }, ticket.id), NotFoundException, 'another customer is not a party to this thread');
+
+    assert.equal((await support.reply(staff, ticket.id, { message: 'بررسی می‌کنیم؛ مبلغ تا دو روز کاری برگردد.' })).status, 'IN_REVIEW', 'a first staff answer pulls the thread out of the open pile');
+    await assert.rejects(support.setStatus(staff, ticket.id, { status: 'RESOLVED' }), /توضیح کوتاه لازم است/);
+    assert.equal((await support.setStatus(staff, ticket.id, { status: 'RESOLVED', note: 'مبلغ ارسال به کیف پول شما برگشت.' })).status, 'RESOLVED');
+    assert.equal((await support.reply(customer, ticket.id, { message: 'هنوز چیزی در کیف پول نیست.' })).status, 'OPEN', 'the reporter answering a resolved thread reopens it');
+
+    const statusRows = await rows(`SELECT action,metadata FROM audit_logs WHERE action='SUPPORT_TICKET_STATUS' AND entity_id=$1 ORDER BY created_at,id`, [ticket.id]);
+    assert.deepEqual(statusRows.map(row => `${row.metadata.from}>${row.metadata.to}`), ['OPEN>IN_REVIEW', 'IN_REVIEW>RESOLVED', 'RESOLVED>OPEN'], 'the automatic moves caused by replies are audited like the manual ones');
+
+    const queue = await support.queue({ status: 'OPEN', search: '09120000001' });
+    assert.equal(queue.items[0].id, ticket.id, 'searching by the reporter number finds the thread');
+    assert.deepEqual({ tail: queue.items[0].authorTail, business: queue.items[0].businessName, messages: queue.items[0].messageCount }, { tail: '0001', business: 'رستوران آزمون', messages: 3 }, 'the queue shows four digits of the number, not the number');
+    assert.equal((await support.queue({ status: 'OPEN' })).counts.OPEN, 1);
+
+    assert.equal((await support.setStatus(customer, ticket.id, { status: 'CLOSED' })).status, 'CLOSED', 'a reporter may close what they opened');
+    await assert.rejects(support.reply(staff, ticket.id, { message: 'پاسخ بعد از بسته شدن' }), /بسته شده/);
+    const freed = await support.open(customer, { orderId, message: 'همان موضوع دوباره پیش آمده و این‌بار مبلغ اصلاً نیامده.' });
+    assert.notEqual(freed.id, ticket.id, 'closing releases the unique slot for a genuine repeat');
+    assert.deepEqual((await support.mine(customer, { status: 'CLOSED' })).items.map(item => item.id), [ticket.id]);
+
+    await assert.rejects(feedback.remove(staff, first.id, ''), /دلیل/);
+    assert.equal((await feedback.remove(staff, first.id, 'توهین به پرسنل در توضیحات')).removed, true);
+    assert.equal((await feedback.forBusiness(shop, uuids.business)).feedbackCount, 0, 'a removed rating leaves the average');
+    const removal = (await rows(`SELECT metadata FROM audit_logs WHERE action='FEEDBACK_REMOVED' AND entity_id=$1`, [first.id]))[0].metadata as { reason: string; removedBy: string };
+    assert.deepEqual({ reason: removal.reason, removedBy: removal.removedBy }, { reason: 'توهین به پرسنل', removedBy: 'SUPER_ADMIN' });
+    assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM order_feedback WHERE order_id=$1`, [orderId]))[0].c, 0);
   });
 });

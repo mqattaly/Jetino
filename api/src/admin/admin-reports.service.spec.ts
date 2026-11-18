@@ -55,6 +55,16 @@ describe('AdminReportsService',()=>{
   assert.ok(!/u\.phone|delivery_address/i.test(sql),'the performance report must not return customer-level data');
  });
 
+ it('reads ratings without joining them so no money column is multiplied',async()=>{
+  let sql='';let values:unknown[]|undefined;
+  const service=new AdminReportsService({ query: async (text: string, params?: unknown[]) => { sql = text; values = params; return { rows: [] }; } } as never);
+  await service.businessPerformance('7d');
+  assert.match(sql,/SELECT COUNT\(\*\)::int FROM order_feedback f WHERE f\.business_id=b\.id AND f\.created_at >= now\(\) - \$1::interval/,'the feedback window must use the same bound period');
+  assert.match(sql,/AVG\(f\.business_rating\)/,'the average must come from the ratings table');
+  assert.ok(!/JOIN order_feedback/.test(sql),'a joined feedback table would multiply every revenue sum');
+  assert.deepEqual(values,['7 days'],'the extra subqueries must not add parameters');
+ });
+
  it('rejects an unsupported performance period before querying',async()=>{
   let queried=false;
   const service=new AdminReportsService({query:async()=>{queried=true;return{rows:[],rowCount:0};}} as never);

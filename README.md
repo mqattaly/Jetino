@@ -56,6 +56,22 @@ npm run admin:promote
 
 همهٔ تغییرهای مالی، وضعیت و دسترسی در جدول `audit_logs` نوشته می‌شوند و مدیر کل می‌تواند آن‌ها را در پنل `/admin/settings` (بخش «گزارش عملیات حساس») ببیند: `GET /api/v1/admin/audit-logs?action=&actorId=&entityId=&since=&until=&limit=&offset=` و `GET /api/v1/admin/audit-logs/actions` برای فهرست عملیات‌های واقعیِ ثبت‌شده. این مسیر فقط برای `SUPER_ADMIN` باز است، شمارهٔ تماس بازیابی‌کننده تنها ۴ رقم نمایش داده می‌شود، کلیدهای متادیتا که بوی اعتبارنامه می‌دهند (`otp`, `token`, `secret`, `api_key`, …) حذف می‌شوند و تعدادشان با فیلد `redacted` اعلام می‌شود، و خودِ مشاهده هم با عملیات `ADMIN_AUDIT_READ` در همین گزارش ثبت می‌شود. سقف هر صفحه ۱۰۰ ردیف و سقف جابه‌جایی در گزارش ۵۰۰۰ ردیف است تا صفحه‌گردی عمیق، کل لاگ را اسکن نکند.
 
+### امتیاز، بازخورد و گزارش پشتیبانی
+
+اسکیمای `013_feedback_support.sql` دو جدول `order_feedback` و `support_tickets` (با `support_messages` و `support_ticket_events`) را می‌سازد.
+
+**بازخورد سفارش.** امتیاز فقط پس از `DELIVERED` و فقط توسط مشتریِ همان سفارش نوشته می‌شود؛ برای هر سفارش یک ردیف وجود دارد و نویسنده می‌تواند آن را ویرایش کند (پس نیازی به ثبت گزارش جدید برای یک غلط تایپی نیست). امتیاز کسب‌وکار از ۱ تا ۵ لازم است و امتیاز پیک اختیاری است و فقط وقتی پذیرفته می‌شود که سفارش رانندهٔ تخصیص‌یافته داشته باشد. در ثبت اول، صاحب کسب‌وکار اعلان `ORDER_FEEDBACK` (برای امتیاز ۱ یا ۲ با برچسب «نیازمند توجه») و راننده `DRIVER_FEEDBACK` می‌گیرد؛ ویرایش دوباره اعلان نمی‌فرستد، تا یک اصلاح ساده به اسپم تبدیل نشود.
+- `GET/PUT /api/v1/orders/:orderId/feedback` برای مشتری همان سفارش (PUT بدنهٔ `{businessRating, driverRating?, comment?}`).
+- `GET /api/v1/feedback/businesses/:businessId?limit=&offset=` برای صاحب کسب‌وکار: میانگین امتیازها، تعداد بازخوردها، تعداد موارد نیازمند توجه و آخرین نظرها. `GET /api/v1/feedback/drivers/me` فقط امتیازهای مربوط به خودِ رانندگی کاربر را برمی‌گرداند.
+- کادر عملیات: `GET /api/v1/feedback/admin?maxStars=&businessId=` و `DELETE /api/v1/feedback/admin/:id` با بدنهٔ `{reason}`. حذف بدون دلیل پذیرفته نمی‌شود و خودِ حذف با action `FEEDBACK_REMOVED` در جدول ممیزی ثبت می‌شود؛ حذف شده از میانگین هم بیرون می‌رود.
+- ستون‌های `feedbackCount`، `feedbackInPeriod`، `averageBusinessRating` و `lowRatingCount` در `GET /api/v1/admin/reports/businesses` از همین جدول با زیرکوئری همبسته خوانده می‌شوند (نه JOIN، تا جمع‌های ریال تکثیر نشوند).
+
+**گزارش پشتیبانی.** تیکت یک گفت‌وگو است، نه یک فرم: گزارش‌دهنده و کادر پیام می‌نویسند و وضعیت با `OPEN → IN_REVIEW → RESOLVED → CLOSED` حرکت می‌کند (از `RESOLVED` می‌توان به `IN_REVIEW` برگشت، از `CLOSED` بیرون آمدن ممکن نیست). `RESOLVED` فقط با یادداشت «چه انجام شد» ثبت می‌شود. پاسخ مشتری روی گزارش `RESOLVED` آن را خودکار به `OPEN` برمی‌گرداند و اولین پاسخ کادر روی گزارش `OPEN` آن را به `IN_REVIEW` می‌برد — هر دو تغییر وضعیت، از جمله نوعِ خودکار، در `audit_logs` با action `SUPPORT_TICKET_STATUS` می‌نشیند. برای یک سفارش، هر نفر فقط یک گفت‌وگوی باز می‌تواند داشته باشد (unique index جزئی) و بستن، جای ثبت گزارش تازه را باز می‌کند. حریفِ سفارش (صاحب کسب‌وکار یا راننده) اعلان می‌گیرد و می‌تواند پاسخ دهد، ولی وضعیت را تغییر نمی‌دهد.
+- `POST /api/v1/support/tickets` با `{message, orderId?}`، `GET /api/v1/support/tickets/mine?status=`، `GET /api/v1/support/tickets/:id`، `POST /api/v1/support/tickets/:id/messages` و `PATCH /api/v1/support/tickets/:id/status` با `{status, note?}`.
+- صف کادر: `GET /api/v1/support/tickets/admin/queue?status=&search=` که شمارش هر چهار وضعیت را هم برمی‌گرداند و از شمارهٔ تماس گزارش‌دهنده فقط ۴ رقم آخر را می‌دهد؛ جست‌وجو با همان یک عبارت روی نام، شماره و شناسهٔ گزارش کار می‌کند.
+
+در رابط کاربری: دکمهٔ «ثبت امتیاز» در `/orders` برای سفارش‌های تحویل‌شده، بخش «بازخورد مشتریان» در `/business/orders`، «امتیاز تحویل‌ها» در `/driver/deliveries`، و در `/admin/settings` دو بخش «صف پشتیبانی» و «بازخورد سفارش‌ها» کنار گزارش ممیزی. هر سه پنل «گزارش‌های من» را هم دارند و بازکردن اعلانِ یک گزارش، مستقیم داخل همان گفت‌وگو می‌رود (`?ticketId=`). اعلان‌های پشتیبانی: `SUPPORT_TICKET_OPENED`، `SUPPORT_TICKET_MESSAGE`، `SUPPORT_TICKET_RESOLVED`.
+
 ### پشتیبان‌گیری و تمرین بازیابی
 
 پشتیبان‌گیری که روزی بازگردانی نشده باشد، فقط یک فایل است. دو اسکریپت در `api/scripts` این را تضمین می‌کنند:

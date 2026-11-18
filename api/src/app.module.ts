@@ -8,6 +8,7 @@ import { AddressesModule } from './addresses/addresses.module';
 import { OrdersModule } from './orders/orders.module';
 import { DriversModule } from './drivers/drivers.module';
 import { DeliveryModule } from './delivery/delivery.module';
+import { SupportModule } from './support/support.module';
 import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({ imports: [DatabaseModule, AuthModule, BusinessesModule, AdminModule, AddressesModule, OrdersModule, DriversModule, DeliveryModule, NotificationsModule], controllers: [HealthController] })

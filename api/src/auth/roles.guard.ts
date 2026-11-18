@@ -1,7 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable, SetMetadata, ForbiddenException, Inject } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 
-const REQUIRED_ROLES = 'jetino:required_roles';
+export const REQUIRED_ROLES = 'jetino:required_roles';
 export const Roles = (...roles: string[]) => SetMetadata(REQUIRED_ROLES, roles);
 
 type RequestWithUser = { user?: { roles?: string[] } };

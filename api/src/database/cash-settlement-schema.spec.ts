@@ -7,6 +7,28 @@ import { resolve } from 'node:path';
 const directory = resolve(process.cwd(), 'src/database/migrations');
 const read = async (file: string) => await readFile(resolve(directory, file), 'utf8');
 
+describe('feedback and support schema', () => {
+  it('keeps one editable rating per delivered order, tied to both sides', async () => {
+    const sql = await read('013_feedback_support.sql');
+    assert.match(sql, /CREATE TABLE IF NOT EXISTS order_feedback/);
+    assert.match(sql, /order_id uuid NOT NULL UNIQUE REFERENCES orders\(id\) ON DELETE CASCADE/, 'a second row for the same order must be impossible in the database, not just in code');
+    assert.match(sql, /business_rating smallint NOT NULL CHECK \(business_rating BETWEEN 1 AND 5\)/);
+    assert.match(sql, /driver_rating smallint NULL CHECK \(driver_rating IS NULL OR driver_rating BETWEEN 1 AND 5\)/);
+    assert.match(sql, /comment varchar\(500\)/, 'feedback has a bound, so it cannot become an essay');
+    assert.match(sql, /driver_id uuid NULL REFERENCES drivers\(id\) ON DELETE SET NULL/, 'deleting a driver profile must not delete the customer review');
+  });
+
+  it('gives support a thread, an event trail and one live ticket per order', async () => {
+    const sql = await read('013_feedback_support.sql');
+    assert.match(sql, /status varchar\(20\) NOT NULL DEFAULT 'OPEN' CHECK \(status IN \('OPEN','IN_REVIEW','RESOLVED','CLOSED'\)\)/);
+    assert.ok(sql.includes('support_messages'), 'the thread has to be a table, not a jsonb blob');
+    assert.ok(sql.includes('support_ticket_events'), 'who moved the status and when belongs in the schema');
+    assert.match(sql, /ON DELETE CASCADE/);
+    assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS support_tickets_open_per_order_person\s+ON support_tickets\(order_id, opened_by\) WHERE status IN \('OPEN','IN_REVIEW'\)/s);
+    assert.match(sql, /ALTER TABLE support_ticket_events ADD COLUMN IF NOT EXISTS id uuid PRIMARY KEY DEFAULT gen_random_uuid\(\)/, 'the file may already have been applied, so the extra column has to be additive');
+  });
+});
+
 describe('business location schema', () => {
   it('stores the shop pin as a validated coordinate pair', async () => {
     const sql = await read('012_business_location.sql');
@@ -49,5 +71,6 @@ describe('cash settlement schema', () => {
     const position = (name: string) => files.indexOf(name);
     assert.ok(position('007_delivery_cash_collection.sql') < position('011_cash_settlements.sql'), 'settlements are recorded against collected cash');
     assert.ok(position('011_cash_settlements.sql') < position('012_business_location.sql'), 'new schema is applied after the settlement tables');
+    assert.ok(position('012_business_location.sql') < position('013_feedback_support.sql'), 'feedback needs the shops and orders created before it');
   });
 });

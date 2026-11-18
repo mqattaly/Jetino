@@ -45,7 +45,11 @@ export class AdminReportsService {
               COALESCE(SUM(o.commission_rial) FILTER (WHERE o.created_at >= now() - $1::interval),0)::text AS "commissionRial",
               COUNT(o.id) FILTER (WHERE o.status='PENDING_BUSINESS')::int AS "awaitingResponse",
               ROUND(AVG(o.estimated_prep_minutes) FILTER (WHERE o.estimated_prep_minutes IS NOT NULL))::int AS "avgPrepMinutes",
-              COALESCE(SUM(o.total_rial) FILTER (WHERE o.status='DELIVERED' AND o.payment_status='PENDING'),0)::text AS "unpaidDeliveredRial"
+              COALESCE(SUM(o.total_rial) FILTER (WHERE o.status='DELIVERED' AND o.payment_status='PENDING'),0)::text AS "unpaidDeliveredRial",
+              (SELECT COUNT(*)::int FROM order_feedback f WHERE f.business_id=b.id) AS "feedbackCount",
+              (SELECT COUNT(*)::int FROM order_feedback f WHERE f.business_id=b.id AND f.created_at >= now() - $1::interval) AS "feedbackInPeriod",
+              (SELECT ROUND(AVG(f.business_rating)::numeric,2)::float FROM order_feedback f WHERE f.business_id=b.id) AS "averageBusinessRating",
+              (SELECT COUNT(*)::int FROM order_feedback f WHERE f.business_id=b.id AND f.business_rating<=2) AS "lowRatingCount"
        FROM businesses b
        JOIN regions r ON r.id=b.region_id
        LEFT JOIN orders o ON o.business_id=b.id
