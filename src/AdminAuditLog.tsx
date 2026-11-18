@@ -10,13 +10,15 @@ const labels:Record<string,string>={
  ADMIN_AUDIT_READ:'مشاهدهٔ گزارش حسابرسی',ADDRESS_CREATED:'ثبت نشانی',ADDRESS_UPDATED:'ویرایش نشانی',ADDRESS_DELETED:'حذف نشانی',
  AUTH_OTP_LOGIN:'ورود با کد یک‌بارمصرف',BUSINESS_APPLICATION_CREATED:'درخواست راه‌اندازی کسب‌وکار',BUSINESS_LOCATION_UPDATED:'تغییر محل کسب‌وکار',
  BUSINESS_ORDERABILITY_CHANGED:'تغییر وضعیت پذیرش سفارش',BUSINESS_STATUS_CHANGED:'تغییر وضعیت کسب‌وکار',BUSINESS_UPDATED:'ویرایش اطلاعات کسب‌وکار',
- CASH_PAYMENT_COLLECTED:'وصول وجه نقد',CASH_PAYMENT_CONFIRMED:'تأیید دریافت وجه نقد',CASH_SETTLEMENT_RECORDED:'ثبت تسویهٔ راننده',
+ CANCEL_POLICY_UPDATED:'تغییر قوانین لغو',CASH_PAYMENT_COLLECTED:'وصول وجه نقد',CASH_PAYMENT_CONFIRMED:'تأیید دریافت وجه نقد',CASH_SETTLEMENT_RECORDED:'ثبت تسویهٔ راننده',
+ FEEDBACK_REMOVED:'حذف بازخورد سفارش',
  DEFAULT_COMMISSION_UPDATED:'تغییر کمیسیون پیش‌فرض',DRIVER_ASSIGNED:'تخصیص راننده',DRIVER_ORDER_STATUS_CHANGED:'تغییر وضعیت سفارش توسط راننده',
  DRIVER_REGISTERED:'افزودن راننده',DRIVER_STATUS_CHANGED:'تغییر وضعیت راننده',MENU_CATEGORY_CREATED:'افزودن دستهٔ منو',
  MENU_PRODUCT_CREATED:'افزودن محصول',MENU_PRODUCT_UPDATED:'ویرایش محصول',ORDER_CANCELLED:'لغو سفارش',ORDER_CREATED:'ثبت سفارش',
- ORDER_STATUS_CHANGED:'تغییر وضعیت سفارش',REGION_DELIVERY_FEE_UPDATED:'تغییر کرایهٔ منطقه',SUPER_ADMIN_BOOTSTRAPPED:'ساخت حساب مدیر کل',
+ ORDER_CANCEL_REQUESTED:'ثبت درخواست لغو',ORDER_CANCELLATION_DECIDED:'پاسخ به درخواست لغو',ORDER_REFUNDED:'ثبت بازپرداخت سفارش',ORDER_STATUS_CHANGED:'تغییر وضعیت سفارش',
+ REGION_DELIVERY_FEE_UPDATED:'تغییر کرایهٔ منطقه',SUPPORT_TICKET_STATUS:'تغییر وضعیت تیکت پشتیبانی',SUPER_ADMIN_BOOTSTRAPPED:'ساخت حساب مدیر کل',
 };
-const entityLabels:Record<string,string>={AUDIT_QUERY:'جست‌وجوی گزارش',ORDER:'سفارش',USER:'کاربر',BUSINESS:'کسب‌وکار',ADDRESS:'نشانی',PRODUCT:'محصول',REGION:'منطقه',CASH_SETTLEMENT:'تسویه',CASH_COLLECTION:'وصول وجه',PLATFORM_SETTING:'تنظیمات پلتفرم',DRIVER:'راننده'};
+const entityLabels:Record<string,string>={AUDIT_QUERY:'جست‌وجوی گزارش',ORDER:'سفارش',USER:'کاربر',BUSINESS:'کسب‌وکار',ADDRESS:'نشانی',PRODUCT:'محصول',REGION:'منطقه',CASH_SETTLEMENT:'تسویه',CASH_COLLECTION:'وصول وجه',PLATFORM_SETTING:'تنظیمات پلتفرم',DRIVER:'راننده',ORDER_FEEDBACK:'بازخورد سفارش',SUPPORT_TICKET:'تیکت پشتیبانی',CANCELLATION_POLICY:'قوانین لغو'};
 const dateTime=(value:string)=>new Intl.DateTimeFormat('fa-IR-u-ca-persian',{dateStyle:'short',timeStyle:'short'}).format(new Date(value));
 const number=(value:number)=>new Intl.NumberFormat('fa-IR').format(value);
 const shortId=(value:string|null)=>value?value.length>8?`${value.slice(0,8).toUpperCase()}…`:value.toUpperCase():'—';

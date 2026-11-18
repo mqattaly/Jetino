@@ -29,7 +29,14 @@ export class AdminReportsService {
          COALESCE(SUM(total_rial),0)::text AS "grossOrderValueRial",
          COALESCE(SUM(total_rial) FILTER (WHERE payment_status='PAID'),0)::text AS "cashCollectedRial",
          COALESCE((SELECT SUM(amount_rial) FROM cash_collections WHERE settlement_id IS NULL),0)::text AS "unsettledCashRial",
-         COALESCE((SELECT COUNT(*) FROM cash_collections WHERE settlement_id IS NULL),0)::text AS "unsettledCollections"
+         COALESCE((SELECT COUNT(*) FROM cash_collections WHERE settlement_id IS NULL),0)::text AS "unsettledCollections",
+         COUNT(*) FILTER (WHERE status='CANCELLED')::text AS "cancelledOrders",
+         COUNT(*) FILTER (WHERE status='CANCELLED' AND created_at >= now() - $1::interval)::text AS "cancelledInPeriod",
+         COUNT(*) FILTER (WHERE status='REJECTED')::text AS "rejectedOrders",
+         COALESCE((SELECT COUNT(*) FROM cancellation_requests WHERE outcome='PENDING'),0)::text AS "openCancellationRequests",
+         COALESCE((SELECT COUNT(*) FROM cancellation_requests WHERE outcome='PENDING' AND created_at >= now() - $1::interval),0)::text AS "cancellationRequestsInPeriod",
+         COALESCE((SELECT SUM(r.amount_rial) FROM order_refunds r WHERE r.created_at >= now() - $1::interval),0)::text AS "refundedRialInPeriod",
+         COALESCE((SELECT COUNT(DISTINCT r.order_id) FROM order_refunds r WHERE r.created_at >= now() - $1::interval),0)::text AS "refundedOrdersInPeriod"
        FROM orders`, [period.interval],
     );
     return { currency: 'IRR', period: periodInput, periodLabel: period.label, generatedAt: new Date().toISOString(), ...result.rows[0] };

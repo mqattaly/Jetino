@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import { Pool, PoolClient } from 'pg';
 import { PG_POOL } from '../database/database.module';
 import { notify } from '../notifications/notifications.util';
+import { decide, readPolicy, rejectionMessage } from '../cancellations/cancellation-policy';
+import { cancelOrder, staffIds, writeAudit } from '../cancellations/cancellation-writes';
 
 type Principal = { sub: string };
 type QuoteItem = { productId: string; quantity: number };
@@ -198,19 +200,45 @@ export class OrdersService {
     finally { client.release(); }
   }
 
-  async cancel(user: Principal, idInput: unknown) {
+  /**
+   * §7.11 — cancelling is a request, and policy decides whether it grants itself.
+   *
+   * The default rules let a customer cancel alone until the business answers; after that the order
+   * is not rewritten by a button any more, a row lands in the operations queue and a human answers
+   * it with a reason. Statuses that already reached an outcome are refused outright, because there
+   * the correct tool is the refund ledger, not a cancellation.
+   */
+  async cancel(user: Principal, idInput: unknown, body: { reason?: unknown } = {}) {
     if (typeof idInput !== 'string' || !uuidPattern.test(idInput)) throw new BadRequestException('شناسهٔ سفارش معتبر نیست.');
+    const submitted = String(body?.reason ?? '').trim();
+    if (submitted.length > 300) throw new BadRequestException('دلیل لغو نباید از ۳۰۰ نویسه بلندتر باشد.');
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      const result = await client.query('SELECT o.id,o.status,b.owner_id FROM orders o JOIN businesses b ON b.id=o.business_id WHERE o.id=$1 AND o.customer_id=$2 FOR UPDATE OF o',[idInput,user.sub]);
+      const result = await client.query('SELECT o.id,o.status,b.owner_id,o.created_at FROM orders o JOIN businesses b ON b.id=o.business_id WHERE o.id=$1 AND o.customer_id=$2 FOR UPDATE OF o',[idInput,user.sub]);
       if (!result.rowCount) throw new NotFoundException('سفارش پیدا نشد.');
-      if (result.rows[0].status !== 'PENDING_BUSINESS') throw new ConflictException('پس از پاسخ کسب‌وکار، لغو خودکار در این نسخه مجاز نیست؛ با پشتیبانی تماس بگیرید.');
-      await client.query(`UPDATE orders SET status='CANCELLED',updated_at=now() WHERE id=$1`,[idInput]);
-      await client.query(`INSERT INTO order_status_history(order_id,from_status,to_status,actor_id,reason) VALUES($1,'PENDING_BUSINESS','CANCELLED',$2,'Customer cancellation')`,[idInput,user.sub]);
-      await notify(client,result.rows[0].owner_id,'ORDER_CANCELLED','سفارش لغو شد','مشتری سفارش را پیش از تأیید لغو کرد.',{orderId:idInput});
-      await client.query(`INSERT INTO audit_logs(actor_id,action,entity_type,entity_id) VALUES($1,'ORDER_CANCELLED','ORDER',$2)`,[user.sub,idInput]);
-      await client.query('COMMIT'); return {id:idInput,status:'CANCELLED'};
+      const order = result.rows[0] as { id:string; status:string; owner_id:string; created_at?: Date };
+      const verdict = decide(await readPolicy(client), { status: order.status, createdAt: order.created_at ?? new Date() });
+      if (verdict.allowed) {
+        await client.query(`INSERT INTO cancellation_requests(order_id,requested_by,reason,outcome,decided_at,note) VALUES($1,$2,$3,'ACCEPTED',now(),$4)`,[idInput,user.sub,submitted||'لغو خودکار در بازهٔ مجاز','سیاست لغو این سفارش را بدون تأیید کادر مجاز دانست.']);
+        await cancelOrder(client, {
+          orderId: idInput, from: order.status, actorId: user.sub, reason: (submitted || 'Customer cancellation').slice(0, 300),
+          owner: { userId: order.owner_id, body: 'مشتری سفارش را در بازهٔ مجاز لغو کرد؛ وجهی دریافت نشده بود.' },
+        });
+        await client.query('COMMIT'); return {id:idInput,status:'CANCELLED'};
+      }
+      if (verdict.code !== 'STAFF_ONLY' && verdict.code !== 'WINDOW') throw new ConflictException(rejectionMessage(verdict));
+      if (submitted.length < 5) throw new BadRequestException('برای بررسی کادر عملیات، دلیل لغو را بنویسید (حداقل ۵ نویسه).');
+      const open = await client.query(`SELECT id FROM cancellation_requests WHERE order_id=$1 AND outcome='PENDING'`,[idInput]);
+      if (open.rowCount) throw new ConflictException('این سفارش یک درخواست لغو باز دارد؛ نتیجه پیش از پاسخ، دوباره ثبت نمی‌شود.');
+      const inserted = await client.query(`INSERT INTO cancellation_requests(order_id,requested_by,reason) VALUES($1,$2,$3) RETURNING id`,[idInput,user.sub,submitted]);
+      await writeAudit(client,user.sub,'ORDER_CANCEL_REQUESTED',idInput,{from:order.status,outcome:'PENDING'});
+      await notify(client,order.owner_id,'ORDER_CANCELLATION_REQUEST','درخواست لغو مشتری','مشتری خواسته سفارش لغو شود؛ در صف عملیات پاسخ داده می‌شود.',{orderId:idInput});
+      for (const staff of await staffIds(client, order.owner_id)) {
+        await notify(client,staff,'ORDER_CANCELLATION_REVIEW','درخواست لغو برای بررسی',`${rejectionMessage(verdict)} دلیل: ${submitted.slice(0,140)}`,{orderId:idInput,requestId:String((inserted.rows[0] as {id:string}).id)});
+      }
+      await client.query('COMMIT');
+      return {id:idInput,status:order.status,outcome:'PENDING',requestId:String((inserted.rows[0] as {id:string}).id),message:rejectionMessage(verdict)};
     } catch(error) { try { await client.query('ROLLBACK'); } catch { /* transaction already closed */ } throw error; }
     finally { client.release(); }
   }

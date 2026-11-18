@@ -72,5 +72,30 @@ describe('cash settlement schema', () => {
     assert.ok(position('007_delivery_cash_collection.sql') < position('011_cash_settlements.sql'), 'settlements are recorded against collected cash');
     assert.ok(position('011_cash_settlements.sql') < position('012_business_location.sql'), 'new schema is applied after the settlement tables');
     assert.ok(position('012_business_location.sql') < position('013_feedback_support.sql'), 'feedback needs the shops and orders created before it');
+    assert.ok(position('013_feedback_support.sql') < position('014_cancellation_refunds.sql'), 'refunds are recorded against orders that already exist');
+  });
+});
+describe('cancellation and refund schema', () => {
+  it('records who asked, when, why and what happened', async () => {
+    const sql = await read('014_cancellation_refunds.sql');
+    assert.match(sql, /CREATE TABLE IF NOT EXISTS cancellation_requests/);
+    assert.match(sql, /reason varchar\(300\) NOT NULL/, '§7.11 asks for a reason on every request, so the column cannot be optional');
+    assert.match(sql, /CHECK \(outcome IN \('PENDING','ACCEPTED','REJECTED','VOIDED'\)\)/);
+    assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS cancellation_requests_one_open_per_order ON cancellation_requests\(order_id\) WHERE outcome = 'PENDING'/, 'one live request per order, enforced by the database');
+    assert.match(sql, /decided_by uuid NULL REFERENCES users\(id\) ON DELETE SET NULL/, 'an answer stays readable after the staff account goes away');
+  });
+
+  it('makes the refund ledger append-only by construction', async () => {
+    const sql = await read('014_cancellation_refunds.sql');
+    assert.match(sql, /amount_rial bigint NOT NULL CHECK \(amount_rial <> 0\)/, 'a zero row would be an edit disguised as a record');
+    assert.match(sql, /CONSTRAINT order_refunds_kind_matches_sign CHECK \(\(kind = 'CORRECTION'\) = \(amount_rial < 0\)\)/, 'a correction is negative and a refund positive, in the database');
+    assert.match(sql, /created_by uuid NOT NULL REFERENCES users\(id\) ON DELETE RESTRICT/, 'who moved money must never be unlinkable');
+  });
+
+  it('keeps one bounded policy row per platform', async () => {
+    const sql = await read('014_cancellation_refunds.sql');
+    assert.match(sql, /id smallint PRIMARY KEY DEFAULT 1 CHECK \(id = 1\)/, 'the rules are a single row, not a per-region list someone forgets to update');
+    assert.match(sql, /window_minutes smallint NOT NULL DEFAULT 0 CHECK \(window_minutes BETWEEN 0 AND 1440\)/);
+    assert.match(sql, /INSERT INTO cancellation_policies\(id\) VALUES \(1\) ON CONFLICT\(id\) DO NOTHING;/, 'the row must exist without a second migration');
   });
 });

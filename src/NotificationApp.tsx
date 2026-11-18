@@ -14,6 +14,7 @@ export default function NotificationApp(){const[token,setToken]=useState(()=>ses
  const destinations:Record<string,{path:string;key:'orderId'|'ticketId'}>={
   DELIVERY_ASSIGNED:{path:'/driver/deliveries',key:'orderId'},DRIVER_FEEDBACK:{path:'/driver/deliveries',key:'orderId'},
   ORDER_NEW:{path:'/business/orders',key:'orderId'},ORDER_CANCELLED:{path:'/business/orders',key:'orderId'},ORDER_FEEDBACK:{path:'/business/orders',key:'orderId'},
+  ORDER_CANCELLATION_REQUEST:{path:'/business/orders',key:'orderId'},ORDER_CANCELLATION_REVIEW:{path:'/admin',key:'orderId'},ORDER_CANCELLATION_DECIDED:{path:'/orders',key:'orderId'},ORDER_REFUNDED:{path:'/orders',key:'orderId'},
   SUPPORT_TICKET_OPENED:{path:'/orders',key:'ticketId'},SUPPORT_TICKET_MESSAGE:{path:'/orders',key:'ticketId'},SUPPORT_TICKET_RESOLVED:{path:'/orders',key:'ticketId'},
  };
  const openNotice=async(item:Notice)=>{

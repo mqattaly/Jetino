@@ -13,7 +13,8 @@ export class RolesGuard implements CanActivate {
     const required = this.reflector.getAllAndOverride<string[]>(REQUIRED_ROLES, [context.getHandler(), context.getClass()]);
     if (!required?.length) return true;
     const request = context.switchToHttp().getRequest<RequestWithUser>();
-    if (!request.user?.roles?.some((role) => required.includes(role))) throw new ForbiddenException();
+    // every screen is Persian, so the guard's own refusal must be too — 'Forbidden resource' landed verbatim in panels
+    if (!request.user?.roles?.some((role) => required.includes(role))) throw new ForbiddenException('این کار با نقش فعلی شما مجاز نیست.');
     return true;
   }
 }

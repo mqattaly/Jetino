@@ -13,6 +13,7 @@ import { DeliveryService } from '../delivery/delivery.service';
 import { AdminAuditService } from '../admin/admin-audit.service';
 import { FeedbackService } from '../support/feedback.service';
 import { SupportService } from '../support/support.service';
+import { CancellationsService } from '../cancellations/cancellations.service';
 
 /**
  * End-to-end flow against a real PostgreSQL instance. It is skipped unless
@@ -56,6 +57,7 @@ suite('cash order flow against PostgreSQL', () => {
   let audit: AdminAuditService;
   let feedback: FeedbackService;
   let support: SupportService;
+  let cancellations: CancellationsService;
 
   before(async () => {
     const admin = new Client({ connectionString: databaseUrl });
@@ -89,6 +91,7 @@ suite('cash order flow against PostgreSQL', () => {
     audit = new AdminAuditService(pool);
     feedback = new FeedbackService(pool);
     support = new SupportService(pool);
+    cancellations = new CancellationsService(pool);
   });
 
   after(async () => {
@@ -295,14 +298,20 @@ suite('cash order flow against PostgreSQL', () => {
     assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM cash_settlements WHERE settled_by=$1`, [uuids.admin]))[0].c, 1);
   });
 
-  it('lets the customer cancel before the kitchen answers and blocks it afterwards', async () => {
+  it('lets the customer cancel inside the policy window and queues anything after it', async () => {
     const cancellable = await placeOrder('flow-cancel');
     assert.deepEqual(await orders.cancel({ sub: uuids.customer }, cancellable.id), { id: cancellable.id, status: 'CANCELLED' });
     assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM notifications WHERE user_id=$1 AND event_type='ORDER_CANCELLED'`, [uuids.owner]))[0].c, 1);
+    // §7.11: the automatic grant is itself recorded, with who asked, when and why
+    const auto = (await rows(`SELECT outcome,reason,note,requested_by FROM cancellation_requests WHERE order_id=$1`, [cancellable.id]))[0];
+    assert.equal(auto.outcome, 'ACCEPTED');
+    assert.equal(auto.requested_by, uuids.customer);
 
     const answered = await placeOrder('flow-after-answer');
     await orders.businessTransition({ sub: uuids.owner }, answered.id, 'CONFIRMED', 20);
-    await assert.rejects(orders.cancel({ sub: uuids.customer }, answered.id), /پس از پاسخ کسب‌وکار/);
+    const filed = await orders.cancel({ sub: uuids.customer }, answered.id, { reason: 'امشب وقت ندارم، لطفاً لغو کنید' });
+    assert.equal(filed.status, 'CONFIRMED', 'a queued request must not move the order');
+    assert.equal(filed.outcome, 'PENDING');
     assert.equal((await orders.detail({ sub: uuids.customer }, answered.id)).status, 'CONFIRMED');
 
     await assert.rejects(orders.cancel({ sub: uuids.owner }, answered.id), /پیدا نشد/);
@@ -384,4 +393,93 @@ suite('cash order flow against PostgreSQL', () => {
     assert.deepEqual({ reason: removal.reason, removedBy: removal.removedBy }, { reason: 'توهین به پرسنل در توضیحات', removedBy: 'SUPER_ADMIN' }, 'the reason and the role that used it are what the log has to carry');
     assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM order_feedback WHERE order_id=$1`, [orderId]))[0].c, 0);
   });
+  /**
+   * §7.11 in real SQL. The queue, the VOIDED branch, the one-open-request index and the refund
+   * ledger are all database features — a partial unique index, a CHECK that ties a row's sign to
+   * its kind, a single-row policy table — that a stubbed pool can only pretend to enforce.
+   */
+  it('holds a cancellation queue and an append-only refund ledger in the database itself', async () => {
+    const customer = { sub: uuids.customer, roles: ['CUSTOMER'] };
+    const shop = { sub: uuids.owner, roles: ['BUSINESS_OWNER'] };
+    const staff = { sub: uuids.admin, roles: ['SUPER_ADMIN'] };
+    const outsider = { sub: uuids.stranger, roles: ['CUSTOMER'] };
+
+    const order = await placeOrder('flow-queue');
+    await orders.businessTransition(shop, order.id, 'CONFIRMED', 25);
+    const filed = await orders.cancel(customer, order.id, { reason: 'سفارش را اشتباهی ثبت کردم' });
+    assert.equal(filed.outcome, 'PENDING');
+    await assert.rejects(orders.cancel(customer, order.id, { reason: 'دوباره، همان درخواست' }), /یک درخواست لغو باز/);
+    await assert.rejects(pool.query(`INSERT INTO cancellation_requests(order_id,requested_by,reason) VALUES($1,$2,'تکرار')`, [order.id, uuids.customer]), /duplicate key value/, 'the partial unique index is the backstop, not only the service check');
+
+    const queue = await cancellations.queue({});
+    const mine = queue.items.find(item => item.orderId === order.id)!;
+    assert.equal(mine.outcome, 'PENDING');
+    assert.equal(mine.requesterTail, '0001', 'the queue shows a customer by the last digits of their number');
+
+    const view = await cancellations.forOrder(customer, order.id);
+    assert.deepEqual({ selfServe: view.selfServe, cancellable: view.cancellable, awaitingAnswer: view.awaitingAnswer, reason: view.requests[0].reason }, { selfServe: false, cancellable: true, awaitingAnswer: true, reason: 'سفارش را اشتباهی ثبت کردم' }, 'the order can still be cancelled, but only after an answer');
+    assert.equal((await cancellations.forOrder(shop, order.id)).requests.length, 1, 'the shop is told what was asked of it');
+    await assert.rejects(cancellations.forOrder(outsider, order.id), /پیدا نشد یا به این حساب مربوط نیست/);
+
+    await assert.rejects(cancellations.decideRequest(staff, mine.id, { decision: 'REJECT' }), /دلیل لازم است/);
+    await assert.rejects(cancellations.decideRequest(outsider, mine.id, { decision: 'ACCEPT', note: 'لغو شود' }), /پاسخ به این درخواست/);
+    const rejected = await cancellations.decideRequest(staff, mine.id, { decision: 'REJECT', note: 'آش آماده است؛ لطفاً تحویل را بپذیرید' });
+    assert.deepEqual({ outcome: rejected.outcome, status: rejected.status }, { outcome: 'REJECTED', status: 'CONFIRMED' }, 'a refusal answers the request without touching the order');
+    assert.equal((await rows(`SELECT note,decided_by FROM cancellation_requests WHERE id=$1`, [mine.id]))[0].note, 'آش آماده است؛ لطفاً تحویل را بپذیرید');
+    assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM notifications WHERE user_id=$1 AND event_type='ORDER_CANCELLATION_DECIDED'`, [uuids.customer]))[0].c, 1, 'exactly one answer, announced once');
+
+    const second = await orders.cancel(customer, order.id, { reason: 'تحویل دیر انجام می‌شود' });
+    assert.equal(second.outcome, 'PENDING', 'a new request may follow an answer');
+    const reopened = await cancellations.queue({ outcome: 'PENDING', search: order.id.slice(0, 8) });
+    assert.equal(reopened.totalMatches, 1, 'the queue finds an order by the head of its id');
+    const answered = await cancellations.decideRequest(shop, reopened.items[0].id, { decision: 'ACCEPT' });
+    assert.equal(answered.status, 'CANCELLED');
+    assert.equal((await rows(`SELECT to_status FROM order_status_history WHERE order_id=$1 AND reason IS NOT NULL ORDER BY created_at DESC LIMIT 1`, [order.id]))[0].to_status, 'CANCELLED', 'the cancellation is the row that carries a reason');
+    const decidedRow = (await rows(`SELECT outcome,decided_by FROM cancellation_requests WHERE id=$1`, [reopened.items[0].id]))[0];
+    assert.deepEqual({ outcome: decidedRow.outcome, by: decidedRow.decided_by }, { outcome: 'ACCEPTED', by: uuids.owner });
+    const actions = (await rows(`SELECT action FROM audit_logs WHERE entity_id=$1 ORDER BY created_at,id`, [order.id])).map(row => row.action);
+    assert.deepEqual(Array.from(new Set(actions)).sort(), ['ORDER_CANCELLATION_DECIDED', 'ORDER_CANCELLED', 'ORDER_CANCEL_REQUESTED']);
+    assert.equal(actions.filter(action => action === 'ORDER_CANCELLATION_DECIDED').length, 2);
+
+    const doomed = await placeOrder('flow-voided');
+    await orders.businessTransition(shop, doomed.id, 'CONFIRMED', 15);
+    await orders.cancel(customer, doomed.id, { reason: 'پشیمان شدم، سفارش را لغو کنید' });
+    await pool.query(`UPDATE orders SET status='DELIVERED' WHERE id=$1`, [doomed.id]);
+    const voided = await cancellations.decideRequest(staff, (await cancellations.forOrder(customer, doomed.id)).requests[0].id, { decision: 'ACCEPT' });
+    assert.deepEqual({ outcome: voided.outcome, status: voided.status }, { outcome: 'VOIDED', status: 'DELIVERED' }, 'a late answer must not resurrect a closed order');
+    assert.equal((await rows(`SELECT status FROM orders WHERE id=$1`, [doomed.id]))[0].status, 'DELIVERED');
+
+    const paid = (await rows(`SELECT o.id FROM orders o JOIN cash_collections cc ON cc.order_id=o.id LIMIT 1`))[0].id as string;
+    const collected = BigInt((await rows(`SELECT amount_rial FROM cash_collections WHERE order_id=$1`, [paid]))[0].amount_rial as string);
+    const half = Number(collected / 2n);
+    assert.equal((await cancellations.refunds(customer, paid)).refundedRial, '0');
+    await assert.rejects(cancellations.recordRefund(shop, paid, { amountRial: 1000, reason: 'کسب‌وکار به خودش refund می‌دهد' }), /فقط با کادر عملیات/);
+    const first = await cancellations.recordRefund(staff, paid, { amountRial: half, reason: 'یک بسته از دو بسته نرسید', fundedBy: 'BUSINESS' });
+    assert.deepEqual({ status: first.paymentStatus, refundable: first.refundableRial }, { status: 'PAID', refundable: String(collected - BigInt(half)) }, 'a partial refund leaves the order owed money');
+    await assert.rejects(cancellations.recordRefund(staff, paid, { amountRial: half + 1, reason: 'بیش از باقی‌مانده' }), new RegExp(`سقف بازپرداخت این سفارش ${collected - BigInt(half)} ریال است`));
+    const cleared = await cancellations.recordRefund(staff, paid, { amountRial: half, reason: 'بستهٔ دوم هم نرسید' });
+    assert.equal(cleared.paymentStatus, 'REFUNDED');
+    assert.equal((await rows(`SELECT payment_status FROM orders WHERE id=$1`, [paid]))[0].payment_status, 'REFUNDED');
+    await assert.rejects(cancellations.recordRefund(staff, paid, { amountRial: 1, reason: 'چیزی نمانده' }), /سقف بازپرداخت این سفارش 0 ریال است/);
+    const clawed = await cancellations.recordRefund(staff, paid, { amountRial: -500000, reason: 'بستهٔ دوم در واقع رسید', fundedBy: 'DRIVER' });
+    assert.deepEqual({ kind: clawed.kind, status: clawed.paymentStatus, refundable: clawed.refundableRial }, { kind: 'CORRECTION', status: 'PAID', refundable: '500000' }, 'a mistake is answered by another row, never by editing the first');
+    assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM order_refunds WHERE order_id=$1`, [paid]))[0].c, 3);
+    assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM notifications WHERE user_id=$1 AND event_type='ORDER_REFUNDED'`, [uuids.customer]))[0].c, 3, 'every ledger row is announced');
+    await assert.rejects(pool.query(`INSERT INTO order_refunds(order_id,amount_rial,kind,funded_by,reason,created_by) VALUES($1,5000,'CORRECTION','PLATFORM','منفی باید منفی باشد',$2)`, [paid, uuids.admin]), /violates check constraint/);
+    await assert.rejects(pool.query(`INSERT INTO order_refunds(order_id,amount_rial,kind,funded_by,reason,created_by) VALUES($1,0,'REFUND','PLATFORM','صفر معنا ندارد',$2)`, [paid, uuids.admin]), /violates check constraint/);
+
+    const widened = await cancellations.setPolicy(staff, { autoCancelStatuses: ['PENDING_BUSINESS', 'CONFIRMED'], windowMinutes: 30 });
+    assert.deepEqual(widened, { autoCancelStatuses: ['PENDING_BUSINESS', 'CONFIRMED'], windowMinutes: 30 });
+    const moved = await placeOrder('flow-widened');
+    await orders.businessTransition(shop, moved.id, 'CONFIRMED', 10);
+    assert.deepEqual(await orders.cancel(customer, moved.id), { id: moved.id, status: 'CANCELLED' }, 'the same status turns self-service the moment the rule is widened');
+    assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM cancellation_requests WHERE order_id=$1 AND outcome='PENDING'`, [moved.id]))[0].c, 0);
+    const policyRow = (await rows(`SELECT auto_statuses,window_minutes,updated_by FROM cancellation_policies WHERE id=1`))[0];
+    assert.deepEqual({ auto: policyRow.auto_statuses, minutes: policyRow.window_minutes, by: policyRow.updated_by }, { auto: 'PENDING_BUSINESS,CONFIRMED', minutes: 30, by: uuids.admin });
+    assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM audit_logs WHERE entity_type='CANCELLATION_POLICY'`))[0].c, 1);
+    await assert.rejects(pool.query(`INSERT INTO cancellation_policies(id,window_minutes) VALUES(2,5)`), /violates check constraint/, 'one platform, one rule row');
+    await assert.rejects(pool.query(`UPDATE cancellation_policies SET window_minutes=2000 WHERE id=1`), /violates check constraint/, 'a window cannot be longer than a day');
+    assert.match((await cancellations.refunds(customer, paid)).refundableRial, /^\d+$/, 'the ledger view stays a decimal string');
+  });
+
 });

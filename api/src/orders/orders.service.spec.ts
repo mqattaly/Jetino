@@ -114,16 +114,52 @@ describe('OrdersService customer cancellation window',()=>{
     assert.equal(statements.at(-1)?.sql,'COMMIT');
   });
 
-  it('blocks cancellation after the business confirmed the order',async()=>{
+  it('files a request for the queue instead of rewriting an order the business already answered',async()=>{
     const statements:Array<{sql:string;values?:unknown[]}> = [];
     const service=transactionalService(async(sql,values)=>{
       statements.push({sql,values});
-      if(sql.startsWith('SELECT o.id,o.status,b.owner_id'))return{rows:[{id:'order-1',status:'CONFIRMED',owner_id:'owner-1'}],rowCount:1};
+      if(sql.startsWith('SELECT o.id,o.status,b.owner_id'))return{rows:[{id:'order-1',status:'CONFIRMED',owner_id:'owner-1',created_at:new Date()}],rowCount:1};
+      if(sql.startsWith('SELECT id FROM cancellation_requests'))return{rows:[],rowCount:0};
+      if(sql.startsWith('SELECT DISTINCT ur.user_id'))return{rows:[{user_id:'ops-1'}],rowCount:1};
+      if(sql.startsWith('INSERT INTO cancellation_requests'))return{rows:[{id:'request-1'}],rowCount:1};
       return{rows:[],rowCount:1};
     });
-    await assert.rejects(service.cancel({sub:'customer-1'},'123e4567-e89b-12d3-a456-426614174006'),ConflictException);
-    assert.ok(!statements.some(entry=>entry.sql.startsWith('UPDATE orders')));
+    const result=await service.cancel({sub:'customer-1'},'123e4567-e89b-12d3-a456-426614174006',{reason:'غذای اشتباه سفارش داده شد'});
+    assert.deepEqual(result,{id:'123e4567-e89b-12d3-a456-426614174006',status:'CONFIRMED',outcome:'PENDING',requestId:'request-1',message:'لغو این سفارش نیاز به تأیید کادر عملیات دارد؛ درخواست شما ثبت شد.'});
+    assert.ok(!statements.some(entry=>entry.sql.startsWith('UPDATE orders')),'the order status must stay untouched');
+    const request=statements.find(entry=>entry.sql.startsWith('INSERT INTO cancellation_requests'))!;
+    assert.deepEqual(request.values,['123e4567-e89b-12d3-a456-426614174006','customer-1','غذای اشتباه سفارش داده شد']);
+    const notices=statements.filter(entry=>entry.sql.startsWith('INSERT INTO notifications')).map(entry=>entry.values?.[0]);
+    assert.deepEqual(notices,['owner-1','ops-1']);
+    assert.equal(statements.at(-1)?.sql,'COMMIT');
+  });
+
+  it('asks for a reason before it queues anything, and never doubles an open request',async()=>{
+    const statements:Array<{sql:string;values?:unknown[]}> = [];
+    const withoutReason=transactionalService(async(sql,values)=>{
+      statements.push({sql,values});
+      if(sql.startsWith('SELECT o.id,o.status,b.owner_id'))return{rows:[{id:'order-1',status:'CONFIRMED',owner_id:'owner-1',created_at:new Date()}],rowCount:1};
+      return{rows:[],rowCount:1};
+    });
+    await assert.rejects(withoutReason.cancel({sub:'customer-1'},'123e4567-e89b-12d3-a456-426614174006',{reason:'؟'}),/دلیل لغو/);
+    assert.ok(!statements.some(entry=>entry.sql.startsWith('INSERT INTO')),'a rejected request must not write anything');
     assert.equal(statements.at(-1)?.sql,'ROLLBACK');
+
+    const second=transactionalService(async(sql,values)=>{
+      if(sql.startsWith('SELECT o.id,o.status,b.owner_id'))return{rows:[{id:'order-1',status:'PREPARING',owner_id:'owner-1',created_at:new Date()}],rowCount:1};
+      if(sql.startsWith('SELECT id FROM cancellation_requests'))return{rows:[{id:'request-1'}],rowCount:1};
+      if(sql.startsWith('INSERT')||sql.startsWith('UPDATE'))throw new Error(`nothing may be written: ${sql}`);
+      return{rows:[],rowCount:1};
+    });
+    await assert.rejects(second.cancel({sub:'customer-1'},'123e4567-e89b-12d3-a456-426614174006',{reason:'دیر آماده می‌شود'}),ConflictException);
+  });
+
+  it('refuses to cancel an order that already reached an outcome',async()=>{
+    const service=transactionalService(async(sql,values)=>{
+      if(sql.startsWith('SELECT o.id,o.status,b.owner_id'))return{rows:[{id:'order-1',status:'DELIVERED',owner_id:'owner-1',created_at:new Date()}],rowCount:1};
+      return{rows:[],rowCount:1};
+    });
+    await assert.rejects(service.cancel({sub:'customer-1'},'123e4567-e89b-12d3-a456-426614174006',{reason:'سرویس اشتباه بود'}),/بازپرداخت/);
   });
 
   it('scopes cancellation to the order owner',async()=>{
