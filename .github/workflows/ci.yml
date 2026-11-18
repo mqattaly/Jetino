@@ -99,7 +99,6 @@ jobs:
     env:
       DATABASE_URL: postgresql://jetino:jetino_ci_only@localhost:5432/jetino?schema=public
       DRILL_DATABASE_URL: postgresql://jetino:jetino_ci_only@localhost:5432/postgres
-      BACKUP_DIR: ${{ runner.temp }}/jetino-backups
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -107,6 +106,10 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: api/package-lock.json
+      - name: Keep backups out of the repository
+        # the runner context is not available in job-level env, so the scratch
+        # directory is exported for the rest of the job instead
+        run: echo "BACKUP_DIR=$RUNNER_TEMP/jetino-backups" >> "$GITHUB_ENV"
       - name: Install API dependencies
         working-directory: api
         run: npm ci
