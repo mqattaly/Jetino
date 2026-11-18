@@ -14,6 +14,9 @@ import { AdminAuditService } from '../admin/admin-audit.service';
 import { FeedbackService } from '../support/feedback.service';
 import { SupportService } from '../support/support.service';
 import { CancellationsService } from '../cancellations/cancellations.service';
+import { NotificationDeliveryService } from '../notifications/notification-delivery.service';
+import { notify } from '../notifications/notifications.util';
+import { allPushEventTypes } from '../notifications/notification-delivery.util';
 
 /**
  * End-to-end flow against a real PostgreSQL instance. It is skipped unless
@@ -484,6 +487,115 @@ suite('cash order flow against PostgreSQL', () => {
     await assert.rejects(pool.query(`INSERT INTO cancellation_policies(id,window_minutes) VALUES(2,5)`), /violates check constraint/, 'one platform, one rule row');
     await assert.rejects(pool.query(`UPDATE cancellation_policies SET window_minutes=2000 WHERE id=1`), /violates check constraint/, 'a window cannot be longer than a day');
     assert.match((await cancellations.refunds(customer, paid)).refundableRial, /^\d+$/, 'the ledger view stays a decimal string');
+  });
+
+
+  it('queues every notification once and records what the push channel did', async () => {
+    // a recipient nobody else writes to, so the queue this test sees is exactly the queue it made
+    const recipient = uuids.stranger;
+    let sendResult: { state: 'SENT' | 'FAILED' | 'SKIPPED'; error?: string | null; permanent?: boolean } = { state: 'SENT', error: null };
+    const deliveries = new NotificationDeliveryService(pool, {
+      resolve: async () => ({ kind: 'local', send: async () => sendResult }),
+      isConfigured: () => true,
+      describe: () => ({ configured: true, vapidReady: true, subject: 'mailto:ops@jetino.app', allowLocal: false }),
+      requirePublicKey: () => 'BPublic_Key_For_The_Integration_Run',
+    } as never);
+    const channelsOf = async (notificationId: string | null) =>
+      (await rows(`SELECT channel FROM notification_deliveries WHERE notification_id=$1 ORDER BY channel`, [notificationId])).map((row) => row.channel as string);
+    const pushRowOf = async (notificationId: string) =>
+      (await rows(`SELECT id, state, attempts, last_error, next_attempt_at > now() AS waiting FROM notification_deliveries WHERE notification_id=$1 AND channel='PUSH'`, [notificationId]))[0];
+    const requeue = (notificationId: string) =>
+      pool.query(`UPDATE notification_deliveries SET state='PENDING', attempts=0, next_attempt_at=now() WHERE notification_id=$1 AND channel='PUSH'`, [notificationId]);
+
+    // 1. an inbox row always has a delivery row beside it, even with no browser registered
+    const plain = await notify(pool, recipient, 'ORDER_CONFIRMED', 'سفارش تأیید شد', 'تأیید شد.', { orderId: 'flow-1' });
+    assert.ok(plain.id, 'notify returns the row it wrote');
+    assert.deepEqual(await channelsOf(plain.id), ['IN_APP'], 'no push row without a subscription');
+    assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM notification_deliveries WHERE notification_id=$1 AND state='SENT'`, [plain.id]))[0].c, 0, 'nothing has been dispatched yet');
+
+    // 2. the same browser re-subscribing is an update, not a second target
+    const subscription = { endpoint: 'https://push.example.com/s/integration-run', p256dh: 'B'.repeat(40), auth: 'a'.repeat(40), userAgent: 'Chrome' };
+    const first = await deliveries.upsertSubscription(recipient, subscription);
+    const second = await deliveries.upsertSubscription(recipient, { ...subscription, p256dh: 'c'.repeat(40) });
+    assert.deepEqual({ created: first.created, sameId: second.id === first.id, renewed: second.created }, { created: true, sameId: true, renewed: false });
+    assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM push_subscriptions`))[0].c, 1, 'a subscription is identified by its endpoint');
+    await assert.rejects(deliveries.upsertSubscription(recipient, { ...subscription, endpoint: 'http://push.example.com/1' }), /معتبر نیست/);
+
+    // 3. duplicate control: the same event for the same key is stored once, and queued once
+    const ticket = await notify(pool, recipient, 'SUPPORT_TICKET_OPENED', 'گزارش', 'متن', { ticketId: 't-1' }, { dedupeKey: 't-1' });
+    const repeat = await notify(pool, recipient, 'SUPPORT_TICKET_OPENED', 'گزارش', 'متن', { ticketId: 't-1' }, { dedupeKey: 't-1' });
+    assert.deepEqual({ deduped: repeat.deduped, id: repeat.id }, { deduped: true, id: null });
+    assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM notifications WHERE dedupe_key='t-1'`))[0].c, 1);
+    assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM notification_deliveries WHERE notification_id=$1`, [ticket.id]))[0].c, 1, 'a suppressed duplicate cannot queue a second send');
+
+    // 4. one dispatch sends every due row once, and a second pass has nothing to say
+    const pushed = await notify(pool, recipient, 'ORDER_PREPARING', 'آماده‌سازی', 'در حال پخت.', { orderId: 'flow-3' });
+    assert.ok(pushed.id);
+    assert.deepEqual(await channelsOf(pushed.id), ['IN_APP', 'PUSH'], 'the active subscription is queued for the new event');
+    const pass = await deliveries.dispatch();
+    assert.ok(pass.claimed >= 4, `claimed ${pass.claimed}`);
+    assert.deepEqual({ sent: pass.sent, failed: pass.failed, skipped: pass.skipped }, { sent: pass.claimed, failed: 0, skipped: 0 });
+    assert.deepEqual(await deliveries.dispatch(), { due: 0, claimed: 0, sent: 0, failed: 0, skipped: 0, exhausted: 0, detached: 0, sender: 'local' }, 'a second pass sends nothing twice');
+    assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM notification_deliveries WHERE state='SENT' AND sent_at IS NULL`))[0].c, 0);
+    const sentRow = await pushRowOf(pushed.id!);
+    assert.deepEqual({ state: sentRow.state, attempts: Number(sentRow.attempts), error: sentRow.last_error }, { state: 'SENT', attempts: 1, error: null });
+
+    // 5. a transient failure keeps the row queued with a backoff instead of failing it
+    await requeue(pushed.id!);
+    sendResult = { state: 'FAILED', error: 'socket hang up' };
+    const failing = await deliveries.dispatch();
+    assert.deepEqual({ claimed: failing.claimed, failed: failing.failed, exhausted: failing.exhausted }, { claimed: 1, failed: 1, exhausted: 0 });
+    const waiting = await pushRowOf(pushed.id!);
+    assert.deepEqual({ state: waiting.state, attempts: Number(waiting.attempts), error: waiting.last_error, waiting: waiting.waiting },
+      { state: 'PENDING', attempts: 1, error: 'socket hang up', waiting: true }, 'the retry is due later, not immediately');
+    await assert.rejects(deliveries.retryDelivery(String(waiting.id)), NotFoundException, 'only a failed row is worth re-queueing');
+
+    // 6. the attempt ceiling turns a queued row into a permanent failure
+    await pool.query(`UPDATE notification_deliveries SET attempts=4, next_attempt_at=now() WHERE notification_id=$1 AND channel='PUSH'`, [pushed.id]);
+    const exhausted = await deliveries.dispatch();
+    assert.equal(exhausted.exhausted, 1);
+    assert.deepEqual({ state: (await pushRowOf(pushed.id!)).state, attempts: Number((await pushRowOf(pushed.id!)).attempts) }, { state: 'FAILED', attempts: 5 });
+
+    // 7. a subscription the push service rejects is deactivated, and stops being queued for
+    await requeue(pushed.id!);
+    sendResult = { state: 'FAILED', error: 'push service rejected the subscription (HTTP 410)', permanent: true };
+    const detached = await deliveries.dispatch();
+    assert.deepEqual({ claimed: detached.claimed, failed: detached.failed, detached: detached.detached }, { claimed: 1, failed: 1, detached: 1 });
+    const subscriptionRow = (await rows(`SELECT active, failures FROM push_subscriptions WHERE endpoint=$1`, [subscription.endpoint]))[0];
+    assert.deepEqual({ active: subscriptionRow.active, failures: Number(subscriptionRow.failures) }, { active: false, failures: 1 });
+    const afterDeath = await notify(pool, recipient, 'ORDER_DELIVERED', 'تحویل', 'دوباره.', { orderId: 'flow-4' });
+    assert.deepEqual(await channelsOf(afterDeath.id), ['IN_APP'], 'a dead subscription is not queued again');
+
+    // 8. staff counters, a manual retry, and a customer who can only read their own row
+    const stats = await deliveries.stats();
+    assert.deepEqual({ active: stats.subscriptions.active, total: stats.subscriptions.total, pushReady: stats.sender.configured }, { active: 0, total: 1, pushReady: true });
+    assert.ok(stats.push.failed >= 1 && stats.push.sent >= 1, JSON.stringify(stats.push));
+    const failedRow = await pushRowOf(pushed.id!);
+    assert.deepEqual(await deliveries.retryDelivery(String(failedRow.id)), { retried: 1 });
+    assert.deepEqual({ state: (await pushRowOf(pushed.id!)).state, attempts: Number((await pushRowOf(pushed.id!)).attempts) }, { state: 'PENDING', attempts: 0 });
+    const queue = await deliveries.recentDeliveries('SENT');
+    assert.ok(queue.items.length >= 1 && queue.items.every((item: { state: string }) => item.state === 'SENT'));
+    await assert.rejects(deliveries.deliveryForNotification(uuids.owner, pushed.id!), NotFoundException);
+    const own = await deliveries.deliveryForNotification(recipient, pushed.id!);
+    assert.deepEqual(own.deliveries.map((row: { channel: string }) => row.channel), ['IN_APP', 'PUSH']);
+    assert.equal(own.push.state, 'PENDING', 'a re-queued row is owed again');
+
+    // 9. event targeting: a muted group still lands in the inbox, it just is not pushed
+    await pool.query(`UPDATE push_subscriptions SET active=true`);
+    await deliveries.setPreferences(recipient, { groups: ['SUPPORT', 'SETTLEMENT'] });
+    const muted = await notify(pool, recipient, 'ORDER_READY_FOR_PICKUP', 'آماده', 'بیایید.', { orderId: 'flow-5' });
+    assert.deepEqual(await channelsOf(muted.id), ['IN_APP']);
+    const kept = await notify(pool, recipient, 'SUPPORT_TICKET_MESSAGE', 'پاسخ', 'متن.', { ticketId: 't-2' });
+    assert.deepEqual(await channelsOf(kept.id), ['IN_APP', 'PUSH']);
+    assert.equal(
+      (await rows(`SELECT COUNT(*)::int AS c FROM push_event_opt_outs WHERE user_id=$1`, [recipient]))[0].c,
+      allPushEventTypes().length - 5,
+      'every event outside the two kept groups is muted, one row each',
+    );
+    await deliveries.setPreferences(recipient, { groups: ['ORDER_STATUS', 'ORDER_CANCELLATION', 'DELIVERY', 'FEEDBACK', 'SUPPORT', 'SETTLEMENT', 'SHOP'] });
+    assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM push_event_opt_outs`))[0].c, 0, 'enabling every group clears the opt-outs');
+    await deliveries.unsubscribe(recipient, { endpoint: subscription.endpoint });
+    assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM push_subscriptions`))[0].c, 0);
   });
 
 });

@@ -5,7 +5,8 @@ import { NotificationsService } from './notifications.service';
 import { notify } from './notifications.util';
 
 function serviceWith(query: (sql: string, values?: unknown[]) => Promise<{ rows: unknown[]; rowCount: number }>) {
-  return new NotificationsService({ query } as never);
+  const deliveries = { pushStates: async () => new Map() } as never;
+  return new NotificationsService({ query } as never, deliveries);
 }
 
 describe('NotificationsService', () => {
@@ -19,7 +20,7 @@ describe('NotificationsService', () => {
     });
 
     const result = await service.list({ sub: 'user-123' });
-    assert.deepEqual(result, { items: [{ id: 'notice-1' }], unreadCount: 3 });
+    assert.deepEqual(result, { items: [{ id: 'notice-1', pushState: 'NONE', pushError: null }], unreadCount: 3 });
     assert.equal(calls.length, 2);
     for (const call of calls) {
       assert.match(call.sql, /user_id=\$1/);
@@ -62,9 +63,33 @@ describe('NotificationsService', () => {
       },
     };
 
-    await notify(client as never, 'user-123', 'ORDER_NEW', 'سفارش تازه', 'برای بررسی ثبت شد.', { orderId: 'order-456' });
+    const result = await notify(client as never, 'user-123', 'ORDER_NEW', 'سفارش تازه', 'برای بررسی ثبت شد.', { orderId: 'order-456' });
+    assert.deepEqual(result, { id: null, deduped: false });
     assert.match(executed!.sql, /INSERT INTO notifications\(user_id,event_type,title,body,data\)/);
     assert.deepEqual(executed!.values, ['user-123', 'ORDER_NEW', 'سفارش تازه', 'برای بررسی ثبت شد.', JSON.stringify({ orderId: 'order-456' })]);
+  });
+
+  it('stores a duplicate event once when the caller names a dedupe key', async () => {
+    const seen: Array<{ sql: string; values?: unknown[] }> = [];
+    const client = {
+      query: async (sql: string, values?: unknown[]) => {
+        seen.push({ sql, values });
+        return { rows: [], rowCount: 0 };
+      },
+    };
+
+    const result = await notify(client as never, 'user-123', 'ORDER_NEW', 'سفارش تازه', 'برای بررسی ثبت شد.', { orderId: 'order-456' }, { dedupeKey: 'order-456' });
+    assert.deepEqual(result, { id: null, deduped: true });
+    assert.match(seen[0].sql, /dedupe_key/);
+    assert.match(seen[0].sql, /ON CONFLICT \(user_id,event_type,dedupe_key\) WHERE dedupe_key IS NOT NULL DO NOTHING/);
+    assert.deepEqual(seen[0].values, ['user-123', 'ORDER_NEW', 'سفارش تازه', 'برای بررسی ثبت شد.', JSON.stringify({ orderId: 'order-456' }), 'order-456']);
+  });
+
+  it('leaves events without a dedupe key on the plain insert path', async () => {
+    let sql = '';
+    const client = { query: async (statement: string) => { sql = statement; return { rows: [{ id: '7' }], rowCount: 1 }; } };
+    assert.deepEqual(await notify(client as never, 'u', 'ORDER_DELIVERED', 't', 'b'), { id: '7', deduped: false });
+    assert.doesNotMatch(sql, /dedupe_key|ON CONFLICT/);
   });
 
   it('marks only unread notifications for the current user as read', async () => {

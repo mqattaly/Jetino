@@ -70,14 +70,14 @@ export class SupportService {
       await client.query(`INSERT INTO support_ticket_events(ticket_id,actor_id,from_status,to_status) VALUES($1,$2,NULL,'OPEN')`, [ticketId, user.sub]);
       await client.query('UPDATE support_tickets SET updated_at=now() WHERE id=$1', [ticketId]);
       for (const userId of await this.staffIds(client)) {
-        if (userId !== user.sub) await notify(client, userId, 'SUPPORT_TICKET_OPENED', 'گزارش جدید پشتیبانی', text.slice(0, 140), { ticketId, orderId });
+        if (userId !== user.sub) await notify(client, userId, 'SUPPORT_TICKET_OPENED', 'گزارش جدید پشتیبانی', text.slice(0, 140), { ticketId, orderId }, { dedupeKey: ticketId });
       }
       // the other side of the order is told a complaint about it was opened, but the
       // thread itself stays between the reporter and support staff
       if (counterparty) {
         const watched = counterparty.customer_id === user.sub ? counterparty.owner_id : counterparty.customer_id;
         if (watched !== user.sub) {
-          await notify(client, watched, 'SUPPORT_TICKET_OPENED', 'گزارشی دربارهٔ سفارش شما ثبت شد', 'کادر پشتیبانی در جریان است؛ برای توضیح بیشتر با آن‌ها گفت‌وگو کنید.', { ticketId, orderId });
+          await notify(client, watched, 'SUPPORT_TICKET_OPENED', 'گزارشی دربارهٔ سفارش شما ثبت شد', 'کادر پشتیبانی در جریان است؛ برای توضیح بیشتر با آن‌ها گفت‌وگو کنید.', { ticketId, orderId }, { dedupeKey: ticketId });
         }
       }
       await client.query('COMMIT');

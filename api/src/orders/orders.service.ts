@@ -125,7 +125,7 @@ export class OrdersService {
         [orderId,line.productId,line.productName,line.unitPriceRial,line.quantity,line.lineTotalRial],
       );
       await client.query(`INSERT INTO order_status_history(order_id,from_status,to_status,actor_id,reason) VALUES($1,NULL,'PENDING_BUSINESS',$2,'Order created')`, [orderId,user.sub]);
-      await notify(client,price.business.owner_id,'ORDER_NEW','سفارش تازه دارید','یک سفارش جدید برای بررسی ثبت شده است.',{orderId});
+      await notify(client,price.business.owner_id,'ORDER_NEW','سفارش تازه دارید','یک سفارش جدید برای بررسی ثبت شده است.',{orderId},{dedupeKey:orderId});
       await client.query(`INSERT INTO audit_logs(actor_id,action,entity_type,entity_id,metadata) VALUES($1,'ORDER_CREATED','ORDER',$2,$3::jsonb)`, [user.sub,orderId,JSON.stringify({paymentMethod:'CASH',currency:'IRR'})]);
       const order = await this.orderDetails(client,user,orderId);
       await client.query('COMMIT'); return { ...order, replayed: false };
@@ -233,9 +233,9 @@ export class OrdersService {
       if (open.rowCount) throw new ConflictException('این سفارش یک درخواست لغو باز دارد؛ نتیجه پیش از پاسخ، دوباره ثبت نمی‌شود.');
       const inserted = await client.query(`INSERT INTO cancellation_requests(order_id,requested_by,reason) VALUES($1,$2,$3) RETURNING id`,[idInput,user.sub,submitted]);
       await writeAudit(client,user.sub,'ORDER_CANCEL_REQUESTED',idInput,{from:order.status,outcome:'PENDING'});
-      await notify(client,order.owner_id,'ORDER_CANCELLATION_REQUEST','درخواست لغو مشتری','مشتری خواسته سفارش لغو شود؛ در صف عملیات پاسخ داده می‌شود.',{orderId:idInput});
+      await notify(client,order.owner_id,'ORDER_CANCELLATION_REQUEST','درخواست لغو مشتری','مشتری خواسته سفارش لغو شود؛ در صف عملیات پاسخ داده می‌شود.',{orderId:idInput},{dedupeKey:`request:${String((inserted.rows[0] as {id:string}).id)}`});
       for (const staff of await staffIds(client, order.owner_id)) {
-        await notify(client,staff,'ORDER_CANCELLATION_REVIEW','درخواست لغو برای بررسی',`${rejectionMessage(verdict)} دلیل: ${submitted.slice(0,140)}`,{orderId:idInput,requestId:String((inserted.rows[0] as {id:string}).id)});
+        await notify(client,staff,'ORDER_CANCELLATION_REVIEW','درخواست لغو برای بررسی',`${rejectionMessage(verdict)} دلیل: ${submitted.slice(0,140)}`,{orderId:idInput,requestId:String((inserted.rows[0] as {id:string}).id)},{dedupeKey:`request:${String((inserted.rows[0] as {id:string}).id)}:review`});
       }
       await client.query('COMMIT');
       return {id:idInput,status:order.status,outcome:'PENDING',requestId:String((inserted.rows[0] as {id:string}).id),message:rejectionMessage(verdict)};

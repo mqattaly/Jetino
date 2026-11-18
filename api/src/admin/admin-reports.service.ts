@@ -110,7 +110,7 @@ export class AdminReportsService {
       const settlementId = settlement.rows[0].id as string;
       await client.query(`UPDATE cash_collections SET settlement_id=$1 WHERE id=ANY($2::uuid[])`, [settlementId, open.rows.map((row: { id: string }) => row.id)]);
       await client.query(`INSERT INTO audit_logs(actor_id,action,entity_type,entity_id,metadata) VALUES($1,'CASH_SETTLEMENT_RECORDED','CASH_SETTLEMENT',$2,$3::jsonb)`, [actor.sub, settlementId, JSON.stringify({ driverId: driverIdInput, amountRial: total.toString(), orderCount: open.rowCount })]);
-      await notify(client, driverUserId, 'CASH_SETTLED', 'تسویه وجه نقد انجام شد', `مبلغ ${total.toString()} ریال از ${open.rowCount} سفارش تسویه شد.`, { driverId: driverIdInput, amountRial: total.toString(), settlementId });
+      await notify(client, driverUserId, 'CASH_SETTLED', 'تسویه وجه نقد انجام شد', `مبلغ ${total.toString()} ریال از ${open.rowCount} سفارش تسویه شد.`, { driverId: driverIdInput, amountRial: total.toString(), settlementId }, { dedupeKey: settlementId });
       await client.query('COMMIT');
       return { id: settlementId, driverId: driverIdInput, amountRial: total.toString(), orderCount: open.rowCount, settledAt: settlement.rows[0].settled_at };
     } catch (error) { try { await client.query('ROLLBACK'); } catch { /* transaction already closed */ } throw error; }

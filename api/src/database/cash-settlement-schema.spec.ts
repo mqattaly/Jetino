@@ -73,6 +73,7 @@ describe('cash settlement schema', () => {
     assert.ok(position('011_cash_settlements.sql') < position('012_business_location.sql'), 'new schema is applied after the settlement tables');
     assert.ok(position('012_business_location.sql') < position('013_feedback_support.sql'), 'feedback needs the shops and orders created before it');
     assert.ok(position('013_feedback_support.sql') < position('014_cancellation_refunds.sql'), 'refunds are recorded against orders that already exist');
+    assert.ok(position('014_cancellation_refunds.sql') < position('015_notification_delivery.sql'), 'delivery state belongs to notifications that already exist');
   });
 });
 describe('cancellation and refund schema', () => {
@@ -97,5 +98,49 @@ describe('cancellation and refund schema', () => {
     assert.match(sql, /id smallint PRIMARY KEY DEFAULT 1 CHECK \(id = 1\)/, 'the rules are a single row, not a per-region list someone forgets to update');
     assert.match(sql, /window_minutes smallint NOT NULL DEFAULT 0 CHECK \(window_minutes BETWEEN 0 AND 1440\)/);
     assert.match(sql, /INSERT INTO cancellation_policies\(id\) VALUES \(1\) ON CONFLICT\(id\) DO NOTHING;/, 'the row must exist without a second migration');
+  });
+});
+
+describe('notification delivery schema', () => {
+  it('keeps the inbox intact and adds the ledger beside it', async () => {
+    const sql = await read('015_notification_delivery.sql');
+    assert.match(sql, /ALTER TABLE notifications ADD COLUMN IF NOT EXISTS dedupe_key varchar\(160\)/);
+    assert.doesNotMatch(sql, /DROP COLUMN|ALTER COLUMN|DROP TABLE|DELETE FROM notifications/, 'the inbox must not be rebuilt or trimmed');
+  });
+
+  it('lets duplicate control be enforced by the database', async () => {
+    const sql = await read('015_notification_delivery.sql');
+    assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS notifications_dedupe_uniq ON notifications\(user_id, event_type, dedupe_key\)/);
+    assert.match(sql, /WHERE dedupe_key IS NOT NULL/, 'only events that opted into dedupe are constrained');
+  });
+
+  it('stores one delivery row per notification, channel and subscription', async () => {
+    const sql = await read('015_notification_delivery.sql');
+    assert.match(sql, /CREATE TABLE IF NOT EXISTS notification_deliveries/);
+    assert.match(sql, /CONSTRAINT notification_deliveries_channel_check CHECK \(channel IN \('IN_APP','PUSH'\)\)/);
+    assert.match(sql, /CONSTRAINT notification_deliveries_state_check CHECK \(state IN \('PENDING','SENT','FAILED','SKIPPED'\)\)/);
+    assert.match(sql, /CONSTRAINT notification_deliveries_once_uniq UNIQUE \(notification_id, channel, push_subscription_id\)/, 'a retried dispatch must not be able to insert a second send');
+    assert.match(sql, /attempts integer NOT NULL DEFAULT 0 CHECK \(attempts >= 0\)/);
+    assert.match(sql, /CREATE INDEX IF NOT EXISTS notification_deliveries_queue_idx ON notification_deliveries\(state, next_attempt_at\)/, 'the queue is read by state and due time');
+  });
+
+  it('queues deliveries where the inbox row is written', async () => {
+    const sql = await read('015_notification_delivery.sql');
+    assert.match(sql, /CREATE OR REPLACE FUNCTION notifications_queue_deliveries\(\) RETURNS trigger/);
+    assert.match(sql, /AFTER INSERT ON notifications/);
+    assert.match(sql, /FOR EACH ROW EXECUTE FUNCTION notifications_queue_deliveries\(\)/);
+    assert.match(sql, /INSERT INTO notification_deliveries\(notification_id, user_id, channel\)\s*\n?\s*VALUES \(NEW.id, NEW.user_id, 'IN_APP'\)/);
+    assert.match(sql, /FROM push_subscriptions AS s\s*\n?\s*WHERE s\.user_id = NEW\.user_id AND s\.active/, 'only live subscriptions are queued');
+    assert.match(sql, /NOT EXISTS \(\s*SELECT 1 FROM push_event_opt_outs/,'an opt-out must silence the push, and nothing else');
+    assert.match(sql, /ON CONFLICT \(notification_id, channel, push_subscription_id\) DO NOTHING/g);
+  });
+
+  it('identifies a browser subscription by the endpoint the browser gave us', async () => {
+    const sql = await read('015_notification_delivery.sql');
+    assert.match(sql, /CREATE TABLE IF NOT EXISTS push_subscriptions/);
+    assert.match(sql, /endpoint text NOT NULL UNIQUE/, 'one row per browser, so re-subscribing cannot double-deliver');
+    assert.match(sql, /user_id uuid NOT NULL REFERENCES users\(id\) ON DELETE CASCADE/);
+    assert.match(sql, /failures integer NOT NULL DEFAULT 0 CHECK \(failures >= 0\)/);
+    assert.match(sql, /active boolean NOT NULL DEFAULT true/);
   });
 });
