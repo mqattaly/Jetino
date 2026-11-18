@@ -56,7 +56,17 @@ jobs:
           npm test 2>&1 | tee "$RUNNER_TEMP/api-tests.log"
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
-            { echo '### API test output'; echo; echo '```'; tail -n 300 "$RUNNER_TEMP/api-tests.log"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            # a failing TAP summary alone does not say *what* differed, and the raw job log
+            # is not readable from outside Actions, so the assertion excerpt goes with it
+            {
+              echo '### API test output'
+              echo
+              echo '```'
+              grep -B 6 -A 26 -m 3 "AssertionError" "$RUNNER_TEMP/api-tests.log" || true
+              echo '--- last lines ---'
+              tail -n 200 "$RUNNER_TEMP/api-tests.log"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
           exit "$status"
       - name: Paste the failing tests on the pull request
@@ -69,7 +79,9 @@ jobs:
             echo "### ❌ API tests failed on \`${GITHUB_SHA:0:7}\`"
             echo
             echo '```text'
-            grep -E "not ok|# (tests|pass|fail)|AssertionError|error:" "$RUNNER_TEMP/api-tests.log" | tail -n 60
+            grep -E "not ok|# (tests|pass|fail)" "$RUNNER_TEMP/api-tests.log" | tail -n 20
+            echo "----- first failures, with the diff that caused them -----"
+            grep -B 6 -A 26 -m 3 "AssertionError" "$RUNNER_TEMP/api-tests.log" || true
             echo '```'
           } > "$RUNNER_TEMP/api-tests-comment.md"
           gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/api-tests-comment.md"

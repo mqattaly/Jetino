@@ -378,10 +378,10 @@ suite('cash order flow against PostgreSQL', () => {
     assert.deepEqual((await support.mine(customer, { status: 'CLOSED' })).items.map(item => item.id), [ticket.id]);
 
     await assert.rejects(feedback.remove(staff, first.id, ''), /دلیل/);
-    assert.equal((await feedback.remove(staff, first.id, 'توهین به پرسنل در توضیحات')).removed, true);
+    assert.equal((await feedback.remove(staff, first.id, 'توهین به پرسنل در توضیحات')).removed, true, 'a reason makes the deletion legal');
     assert.equal((await feedback.forBusiness(shop, uuids.business)).feedbackCount, 0, 'a removed rating leaves the average');
     const removal = (await rows(`SELECT metadata FROM audit_logs WHERE action='FEEDBACK_REMOVED' AND entity_id=$1`, [first.id]))[0].metadata as { reason: string; removedBy: string };
-    assert.deepEqual({ reason: removal.reason, removedBy: removal.removedBy }, { reason: 'توهین به پرسنل', removedBy: 'SUPER_ADMIN' });
+    assert.deepEqual({ reason: removal.reason, removedBy: removal.removedBy }, { reason: 'توهین به پرسنل در توضیحات', removedBy: 'SUPER_ADMIN' }, 'the reason and the role that used it are what the log has to carry');
     assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM order_feedback WHERE order_id=$1`, [orderId]))[0].c, 0);
   });
 });
