@@ -10,6 +10,7 @@ import { AdminReportsService } from '../admin/admin-reports.service';
 import { DriversService } from '../drivers/drivers.service';
 import { BusinessesService } from '../businesses/businesses.service';
 import { DeliveryService } from '../delivery/delivery.service';
+import { AdminAuditService } from '../admin/admin-audit.service';
 
 /**
  * End-to-end flow against a real PostgreSQL instance. It is skipped unless
@@ -49,6 +50,7 @@ suite('cash order flow against PostgreSQL', () => {
   let drivers: DriversService;
   let businesses: BusinessesService;
   let delivery: DeliveryService;
+  let audit: AdminAuditService;
 
   before(async () => {
     const admin = new Client({ connectionString: databaseUrl });
@@ -79,6 +81,7 @@ suite('cash order flow against PostgreSQL', () => {
     drivers = new DriversService(pool);
     businesses = new BusinessesService(pool);
     delivery = new DeliveryService(pool);
+    audit = new AdminAuditService(pool);
   });
 
   after(async () => {
@@ -170,6 +173,45 @@ suite('cash order flow against PostgreSQL', () => {
     const cleared = await delivery.estimateForOrder({ sub: uuids.customer }, order.id);
     assert.equal(cleared.available, false, 'a shop that removed its pin must stop reporting estimates');
     assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM audit_logs WHERE entity_id=$1 AND action='BUSINESS_LOCATION_UPDATED'`, [uuids.business]))[0].c, 2, 'both the store and the clear are audited');
+  });
+
+  it('reads the audit trail back with filters, masking and a recorded browse', async () => {
+    const first = await audit.list({ sub: uuids.admin }, { action: 'AUTH_OTP_LOGIN' });
+    assert.equal(first.totalMatches, 0, 'this flow signs in through the service layer, not the OTP endpoint');
+    assert.equal(first.items.length, 0);
+
+    const all = await audit.list({ sub: uuids.admin }, { limit: '100' });
+    const actions = new Set(all.items.map(item => item.action));
+    assert.ok(actions.has('BUSINESS_LOCATION_UPDATED'), `recorded actions: ${[...actions].join(',')}`);
+    assert.equal(all.items.every(item => item.createdAt !== undefined), true);
+
+    const byEntity = await audit.list({ sub: uuids.admin }, { entityId: uuids.business });
+    assert.ok(byEntity.items.length >= 2, 'every pin change on this business is found by entity');
+    assert.equal(byEntity.items.every(item => item.entityId === uuids.business), true);
+
+    const vocabulary = await audit.actions();
+    const pinRow = vocabulary.items.find(item => item.action === 'BUSINESS_LOCATION_UPDATED');
+    assert.ok(pinRow && pinRow.occurrences >= 2, 'the action list reflects what the log holds');
+
+    const mine = await audit.list({ sub: uuids.admin }, { actorId: uuids.owner });
+    assert.equal(mine.items.every(item => item.entityId === uuids.business), true, 'an actor filter must not leak other actors');
+    assert.equal(mine.items.every(item => typeof item.actorPhone === 'string' && !item.actorPhone.includes('09120000002')), true, 'phones come back masked');
+
+    // a junk identifier is only ever a bound value, so it finds nothing instead of breaking the query
+    const junk = await audit.list({ sub: uuids.admin }, { entityId: "' OR 1=1 --" });
+    assert.deepEqual(junk.items, []);
+
+    const readBefore = (await rows(`SELECT COUNT(*)::int AS c FROM audit_logs WHERE action='ADMIN_AUDIT_READ'`))[0].c;
+    await audit.list({ sub: uuids.admin }, { action: 'ADDRESS_CREATED' });
+    const readAfter = (await rows(`SELECT COUNT(*)::int AS c FROM audit_logs WHERE action='ADMIN_AUDIT_READ'`))[0].c;
+    assert.equal(readAfter, readBefore + 1, 'browsing the audit trail is itself audited');
+    const newestRead = (await rows(`SELECT metadata FROM audit_logs WHERE action='ADMIN_AUDIT_READ' ORDER BY created_at DESC, id DESC LIMIT 1`))[0].metadata;
+    assert.equal(newestRead.action, 'ADDRESS_CREATED');
+
+    // since/until narrow on real timestamps, and a window with nothing in it is empty rather than wrong
+    const future = await audit.list({ sub: uuids.admin }, { since: new Date(Date.now() + 3_600_000).toISOString() });
+    assert.equal(future.totalMatches, 0);
+    await assert.rejects(audit.list({ sub: uuids.admin }, { limit: 'Infinity' }), (error: unknown) => (error as Error).constructor.name === 'BadRequestException', 'a non-finite page is refused, not clamped');
   });
 
   it('walks a cash order through the kitchen, the courier and the settlement book', async () => {

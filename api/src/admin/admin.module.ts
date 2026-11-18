@@ -11,6 +11,8 @@ import { AdminOrdersController } from './admin-orders.controller';
 import { AdminOrdersService } from './admin-orders.service';
 import { AdminReportsController } from './admin-reports.controller';
 import { AdminReportsService } from './admin-reports.service';
+import { AdminAuditController } from './admin-audit.controller';
+import { AdminAuditService } from './admin-audit.service';
 
-@Module({ controllers: [AdminSettingsController, AdminBusinessesController, AdminDriversController, AdminOrdersController, AdminReportsController], providers: [AdminSettingsService, AdminBusinessesService, AdminDriversService, AdminOrdersService, AdminReportsService, JwtAuthGuard, RolesGuard] })
+@Module({ controllers: [AdminSettingsController, AdminBusinessesController, AdminDriversController, AdminOrdersController, AdminReportsController, AdminAuditController], providers: [AdminSettingsService, AdminBusinessesService, AdminDriversService, AdminOrdersService, AdminReportsService, AdminAuditService, JwtAuthGuard, RolesGuard] })
 export class AdminModule {}

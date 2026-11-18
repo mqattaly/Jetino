@@ -73,3 +73,57 @@ jobs:
             echo '```'
           } > "$RUNNER_TEMP/api-tests-comment.md"
           gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/api-tests-comment.md"
+
+  backup-drill:
+    name: Backup and restore drill
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # the same guarantee the PRD asks for in one place: a dump that has never
+    # been restored is only a file, so every push proves it rebuilds the schema
+    # and the row counts the backup recorded
+    needs: verify
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: jetino
+          POSTGRES_USER: jetino
+          POSTGRES_PASSWORD: jetino_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jetino -d jetino"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://jetino:jetino_ci_only@localhost:5432/jetino?schema=public
+      DRILL_DATABASE_URL: postgresql://jetino:jetino_ci_only@localhost:5432/postgres
+      BACKUP_DIR: ${{ runner.temp }}/jetino-backups
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - name: Install API dependencies
+        working-directory: api
+        run: npm ci
+      - name: Build a database worth backing up
+        working-directory: api
+        run: |
+          npm run db:migrate
+          npm run db:seed:demo
+      - name: Install PostgreSQL client tools
+        working-directory: api
+        run: command -v pg_dump >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client; }
+      - name: Back up
+        working-directory: api
+        run: npm run db:backup
+      - name: Restore the backup into a scratch database and compare
+        working-directory: api
+        run: npm run db:restore-drill
+      - name: Show the backup listing when the drill fails
+        if: failure()
+        run: ls -l "$BACKUP_DIR" && tail -n 40 "$BACKUP_DIR"/*.rows 2>/dev/null || true

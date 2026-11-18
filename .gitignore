@@ -3,3 +3,5 @@ dist/
 *.tsbuildinfo
 .env*
 !.env.example
+# pg_dump output from npm run db:backup — never commit a database dump
+backups/
