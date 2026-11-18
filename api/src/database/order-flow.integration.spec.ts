@@ -140,7 +140,12 @@ suite('cash order flow against PostgreSQL', () => {
   });
 
   it('measures the run from the shop pin to the customer door', async () => {
-    const order = await placeOrder('flow-route');
+    // the pricing test's pending order already carries the delivery snapshot, so
+    // routing is measured on it instead of placing a third order and shifting the
+    // report counts the settlement test asserts on
+    const [routed] = await rows(`SELECT id FROM orders ORDER BY created_at,id LIMIT 1`);
+    const order = { id: routed.id as string };
+    assert.equal((await rows(`SELECT id FROM orders`)).length, 1, 'measuring a route must not create orders');
 
     const halfPin = await businesses.setLocation({ sub: uuids.owner }, uuids.business, { latitude: 27.2005 }).catch(error => (error as Error).message);
     assert.match(String(halfPin), /هر دو/, 'a half coordinate is worse than none');
@@ -161,10 +166,10 @@ suite('cash order flow against PostgreSQL', () => {
       assert.ok(estimate.durationMinutes >= 1);
       assert.equal(estimate.cached, false);
     }
-    await pool.query(`UPDATE businesses SET latitude=NULL,longitude=NULL WHERE id=$1`, [uuids.business]);
+    await businesses.setLocation({ sub: uuids.owner }, uuids.business, { latitude: '', longitude: '' });
     const cleared = await delivery.estimateForOrder({ sub: uuids.customer }, order.id);
-    assert.equal(cleared.available, false, 'clearing the pin must not leave a stale cached route');
-    assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM orders WHERE id=$1`, [order.id]))[0].c, 1);
+    assert.equal(cleared.available, false, 'a shop that removed its pin must stop reporting estimates');
+    assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM audit_logs WHERE entity_id=$1 AND action='BUSINESS_LOCATION_UPDATED'`, [uuids.business]))[0].c, 2, 'both the store and the clear are audited');
   });
 
   it('walks a cash order through the kitchen, the courier and the settlement book', async () => {

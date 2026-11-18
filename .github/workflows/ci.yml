@@ -8,6 +8,11 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # pull-requests: write lets a failing run paste the test output onto the PR,
+    # because the raw job log is not reachable from outside GitHub Actions
+    permissions:
+      contents: read
+      pull-requests: write
     services:
       postgres:
         image: postgres:16-alpine
@@ -46,4 +51,25 @@ jobs:
         run: npm run db:migrate
       - name: Run API tests (unit plus the PostgreSQL flow test)
         working-directory: api
-        run: npm test
+        run: |
+          set +e
+          npm test 2>&1 | tee "$RUNNER_TEMP/api-tests.log"
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            { echo '### API test output'; echo; echo '```'; tail -n 300 "$RUNNER_TEMP/api-tests.log"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
+      - name: Paste the failing tests on the pull request
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo "### ❌ API tests failed on \`${GITHUB_SHA:0:7}\`"
+            echo
+            echo '```text'
+            grep -E "not ok|# (tests|pass|fail)|AssertionError|error:" "$RUNNER_TEMP/api-tests.log" | tail -n 60
+            echo '```'
+          } > "$RUNNER_TEMP/api-tests-comment.md"
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/api-tests-comment.md"
