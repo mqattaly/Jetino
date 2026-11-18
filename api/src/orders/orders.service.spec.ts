@@ -12,6 +12,44 @@ function transactionalService(onQuery: (sql: string, values?: unknown[]) => Prom
   return new OrdersService({ connect: async () => client } as never);
 }
 
+describe('OrdersService order placement acceptance',()=>{
+  it('recalculates a cash order server-side and writes order, history and notification atomically',async()=>{
+    const statements:Array<{sql:string;values?:unknown[]}> = [];
+    const userId='123e4567-e89b-12d3-a456-426614174001';
+    const businessId='123e4567-e89b-12d3-a456-426614174002';
+    const addressId='123e4567-e89b-12d3-a456-426614174003';
+    const productId='123e4567-e89b-12d3-a456-426614174004';
+    const orderId='123e4567-e89b-12d3-a456-426614174005';
+    const service=transactionalService(async(sql,values)=>{
+      statements.push({sql,values});
+      if(sql.startsWith('SELECT id,request_hash'))return{rows:[],rowCount:0};
+      if(sql.startsWith('SELECT b.id,b.name'))return{rows:[{id:businessId,name:'کسب‌وکار نمونه',owner_id:'owner-1',commission_bps:1000,region_id:'region-1',region_name:'بندر خمیر',delivery_fee_rial:'500'}],rowCount:1};
+      if(sql.startsWith('SELECT a.id,a.label'))return{rows:[{id:addressId,label:'خانه',address_text:'نشانی نمونه',instructions:null,latitude:'27.2',longitude:'55.7',region_id:'region-1'}],rowCount:1};
+      if(sql.startsWith('SELECT p.id,p.name'))return{rows:[{id:productId,name:'غذای نمونه',price_rial:'1000',business_id:businessId}],rowCount:1};
+      if(sql.startsWith('SELECT value_int'))return{rows:[{value_int:1000}],rowCount:1};
+      if(sql.startsWith('INSERT INTO orders('))return{rows:[{id:orderId}],rowCount:1};
+      if(sql.startsWith('SELECT o.id,o.customer_id'))return{rows:[{id:orderId,customer_id:userId,business_id:businessId,status:'PENDING_BUSINESS',payment_method:'CASH',payment_status:'PENDING',subtotal_rial:'2000',delivery_fee_rial:'500',commission_rial:'200',commission_bps:1000,total_rial:'2500',estimated_prep_minutes:null,delivery_address_snapshot:'نشانی نمونه',delivery_instructions_snapshot:null,delivery_latitude_snapshot:'27.2',delivery_longitude_snapshot:'55.7',created_at:new Date('2026-11-17T10:00:00Z'),updated_at:new Date('2026-11-17T10:00:00Z'),business_name:'کسب‌وکار نمونه'}],rowCount:1};
+      if(sql.startsWith('SELECT product_name'))return{rows:[{product_name:'غذای نمونه',unit_price_rial:'1000',quantity:2,line_total_rial:'2000'}],rowCount:1};
+      if(sql.startsWith('SELECT from_status'))return{rows:[{from_status:null,to_status:'PENDING_BUSINESS',reason:'Order created',created_at:new Date('2026-11-17T10:00:00Z')}],rowCount:1};
+      return{rows:[],rowCount:1};
+    });
+
+    const result=await service.create({sub:userId},{businessId,addressId,paymentMethod:'CASH',items:[{productId,quantity:2}]},'acceptance-key-1');
+    assert.equal(result.id,orderId);
+    assert.equal(result.currency,'IRR');
+    assert.equal(result.amounts.subtotalRial,'2000');
+    assert.equal(result.amounts.deliveryFeeRial,'500');
+    assert.equal(result.amounts.totalRial,'2500');
+    assert.equal(result.payment.method,'CASH');
+    assert.equal(result.delivery.latitude,27.2);
+    assert.ok(statements.some(entry=>entry.sql.startsWith('INSERT INTO order_status_history')));
+    const notice=statements.find(entry=>entry.sql.startsWith('INSERT INTO notifications'))!;
+    assert.equal(notice.values?.[0],'owner-1');
+    assert.equal(JSON.parse(String(notice.values?.[4])).orderId,orderId);
+    assert.equal(statements.at(-1)?.sql,'COMMIT');
+  });
+});
+
 describe('OrdersService preparation estimate validation', () => {
   it('persists the selected estimate and customer notification in the status transaction', async () => {
     const statements: Array<{ sql: string; values?: unknown[] }> = [];
