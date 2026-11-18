@@ -122,8 +122,13 @@ jobs:
           npm run db:migrate
           npm run db:seed:demo
       - name: Install PostgreSQL client tools
-        working-directory: api
-        run: command -v pg_dump >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client; }
+        # pg_dump/pg_restore from a much newer major than the server argue with it in
+        # their own preamble, so a matching client is preferred when the runner lacks one
+        run: |
+          if pg_dump --version 2>/dev/null | grep -q 'PostgreSQL) 16'; then exit 0; fi
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16 || sudo apt-get install -y -qq postgresql-client
+          if [ -x /usr/lib/postgresql/16/bin/pg_dump ]; then echo "PATH=/usr/lib/postgresql/16/bin:$PATH" >> "$GITHUB_PATH"; fi
       - name: Back up
         working-directory: api
         run: |

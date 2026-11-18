@@ -32,7 +32,20 @@ trap cleanup EXIT
 psql "$maintenance" -X -q -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$db_name\"" >/dev/null
 created=1
 
-pg_restore --no-owner --no-privileges -d "$connection" "$dump"
+restore_log="$(mktemp)"
+# The table and row checks below are the verdict, not the exit status alone: a client
+# newer than the server rejects its own preamble (SET transaction_timeout on a server
+# without that setting), which is noise, while a half-restored database is the failure
+# we are looking for. Anything that is not that preamble still stops the drill here.
+if ! pg_restore --no-owner --no-privileges -d "$connection" "$dump" >"$restore_log" 2>&1; then
+  cat "$restore_log" >&2
+  if grep -vE 'transaction_timeout|errors ignored on restore|^[[:space:]]*$' "$restore_log" >/dev/null; then
+    echo "pg_restore failed for a reason unrelated to client/server version skew" >&2
+    exit 1
+  fi
+  echo "note: ignored a preamble complaint from a newer pg_restore than the server" >&2
+fi
+rm -f "$restore_log"
 
 # The migration ledger travels with the dump: a restored database that would
 # re-run migrations is a database that will be half-rebuilt in front of users.

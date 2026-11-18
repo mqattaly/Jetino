@@ -61,6 +61,8 @@ describe('database backup scripts', () => {
     assert.match(drill, /pg_restore/);
     assert.match(drill, /FROM schema_migrations/, 'the migration ledger has to travel with the dump');
     assert.match(drill, /did not match the backup/, 'a mismatch must be reported as a failure');
+    assert.match(drill, /if ! pg_restore/, 'the checks decide, so a client newer than the server cannot fake a failure');
+    assert.match(drill, /unrelated to client\/server version skew/, 'only the harmless preamble may be tolerated');
     assert.match(drill, /failures \+ 1/, 'every table is checked, not just the first');
   });
 
