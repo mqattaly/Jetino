@@ -8,6 +8,7 @@ set -euo pipefail
 
 backup_dir="${1:-${BACKUP_DIR:-backups}}"
 prefix="${DRILL_DB_PREFIX:-jetino_drill_}"
+maintenance="${DRILL_DATABASE_URL%%\?*}"
 db_name="${prefix}$(date -u +%Y%m%dT%H%M%SZ)"
 
 dump="$(ls -1t "$backup_dir"/jetino-*.dump 2>/dev/null | head -n 1 || true)"
@@ -17,20 +18,18 @@ counts="$backup_dir/$(basename "${dump%.dump}").rows"
 
 ( cd "$backup_dir" && sha256sum -c "$(basename "$dump").sha256" )
 
-admin_db="$(psql "$DRILL_DATABASE_URL" -X -At -c 'SELECT current_database()')"
-# drop any ?options suffix first: the database name has to be the last path segment
-maintenance="${DRILL_DATABASE_URL%%\?*}"
+admin_db="$(psql "$maintenance" -X -At -c 'SELECT current_database()')"
 connection="${maintenance%/*}/$db_name"
 created=0
 cleanup() {
   # only ever drop what this run created, and only through the agreed prefix
   if [ "$created" = "1" ] && [ "${KEEP_DRILL_DB:-0}" != "1" ]; then
-    psql "$DRILL_DATABASE_URL" -X -q -c "DROP DATABASE IF EXISTS \"$db_name\" WITH (FORCE)" >/dev/null
+    psql "$maintenance" -X -q -c "DROP DATABASE IF EXISTS \"$db_name\" WITH (FORCE)" >/dev/null
   fi
 }
 trap cleanup EXIT
 
-psql "$DRILL_DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$db_name\"" >/dev/null
+psql "$maintenance" -X -q -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$db_name\"" >/dev/null
 created=1
 
 pg_restore --no-owner --no-privileges -d "$connection" "$dump"

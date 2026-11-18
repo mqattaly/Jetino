@@ -32,6 +32,16 @@ describe('database backup scripts', () => {
     }
   });
 
+  it('hand libpq a connection string it can actually parse', async () => {
+    const backup = await read('scripts/backup.sh');
+    const drill = await read('scripts/restore-drill.sh');
+    // ?schema=public comes from the app's own config and makes psql/pg_dump fail outright
+    assert.ok(backup.includes('${DATABASE_URL%%\\?*}'), 'the backup must strip query parameters before calling the tools');
+    assert.ok(drill.includes('${DRILL_DATABASE_URL%%\\?*}'), 'the drill must strip them too');
+    assert.doesNotMatch(backup, /psql "\$DATABASE_URL"/, 'the raw URL must not reach psql');
+    assert.doesNotMatch(drill, /psql "\$DRILL_DATABASE_URL"/, 'the raw URL must not reach psql');
+  });
+
   it('write a dump, a checksum and the row counts a restore is judged against', async () => {
     const backup = await read('scripts/backup.sh');
     assert.match(backup, /DATABASE_URL:\?DATABASE_URL must be set/, 'a backup with an unset connection string must refuse to run');

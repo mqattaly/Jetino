@@ -82,6 +82,9 @@ jobs:
     # been restored is only a file, so every push proves it rebuilds the schema
     # and the row counts the backup recorded
     needs: verify
+    permissions:
+      contents: read
+      pull-requests: write
     services:
       postgres:
         image: postgres:16-alpine
@@ -123,10 +126,40 @@ jobs:
         run: command -v pg_dump >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client; }
       - name: Back up
         working-directory: api
-        run: npm run db:backup
+        run: |
+          set +e
+          npm run db:backup 2>&1 | tee "$RUNNER_TEMP/backup.log"
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            { echo '### Backup output'; echo; echo '```'; tail -n 80 "$RUNNER_TEMP/backup.log"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
       - name: Restore the backup into a scratch database and compare
         working-directory: api
-        run: npm run db:restore-drill
-      - name: Show the backup listing when the drill fails
-        if: failure()
-        run: ls -l "$BACKUP_DIR" && tail -n 40 "$BACKUP_DIR"/*.rows 2>/dev/null || true
+        run: |
+          set +e
+          npm run db:restore-drill 2>&1 | tee "$RUNNER_TEMP/restore.log"
+          status=${PIPESTATUS[0]}
+          {
+            echo '### Restore drill'
+            echo
+            echo '```'
+            tail -n 80 "$RUNNER_TEMP/restore.log" 2>/dev/null
+            ls -l "$BACKUP_DIR" 2>/dev/null
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+      - name: Paste the drill output on the pull request
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo "### ❌ backup drill failed on \`${GITHUB_SHA:0:7}\`"
+            echo
+            echo '```text'
+            tail -n 40 "$RUNNER_TEMP/backup.log" "$RUNNER_TEMP/restore.log" 2>/dev/null
+            echo '```'
+          } > "$RUNNER_TEMP/backup-drill-comment.md"
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/backup-drill-comment.md"
