@@ -437,9 +437,13 @@ suite('cash order flow against PostgreSQL', () => {
     assert.equal((await rows(`SELECT to_status FROM order_status_history WHERE order_id=$1 AND reason IS NOT NULL ORDER BY created_at DESC LIMIT 1`, [order.id]))[0].to_status, 'CANCELLED', 'the cancellation is the row that carries a reason');
     const decidedRow = (await rows(`SELECT outcome,decided_by FROM cancellation_requests WHERE id=$1`, [reopened.items[0].id]))[0];
     assert.deepEqual({ outcome: decidedRow.outcome, by: decidedRow.decided_by }, { outcome: 'ACCEPTED', by: uuids.owner });
-    const actions = (await rows(`SELECT action FROM audit_logs WHERE entity_id=$1 ORDER BY created_at,id`, [order.id])).map(row => row.action);
-    assert.deepEqual(Array.from(new Set(actions)).sort(), ['ORDER_CANCELLATION_DECIDED', 'ORDER_CANCELLED', 'ORDER_CANCEL_REQUESTED']);
-    assert.equal(actions.filter(action => action === 'ORDER_CANCELLATION_DECIDED').length, 2);
+    // the §7.11 trail on this order: two requests, two answers, and one status move
+    const actions = (await rows(`SELECT action FROM audit_logs WHERE entity_id=$1`, [order.id])).map(row => row.action);
+    for (const action of ['ORDER_CANCEL_REQUESTED', 'ORDER_CANCELLATION_DECIDED', 'ORDER_CANCELLED']) {
+      assert.ok(actions.includes(action), `${action} must stay auditable on the order it belongs to`);
+    }
+    assert.deepEqual({ requests: actions.filter(action => action === 'ORDER_CANCEL_REQUESTED').length, answers: actions.filter(action => action === 'ORDER_CANCELLATION_DECIDED').length }, { requests: 2, answers: 2 }, 'each request and each answer is one row');
+    assert.equal((await rows(`SELECT metadata->>'orderStatus' AS at FROM audit_logs WHERE entity_id=$1 AND action='ORDER_CANCELLATION_DECIDED' AND metadata->>'outcome'='ACCEPTED'`, [order.id]))[0].at, 'CONFIRMED', 'the audit row remembers the status the answer was given on');
 
     const doomed = await placeOrder('flow-voided');
     await orders.businessTransition(shop, doomed.id, 'CONFIRMED', 15);
