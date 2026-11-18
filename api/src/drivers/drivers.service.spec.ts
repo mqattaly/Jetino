@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { DriversService } from './drivers.service';
 
 const orderId = '123e4567-e89b-12d3-a456-426614174010';
@@ -85,6 +85,33 @@ describe('DriversService cash collection on delivery', () => {
     await assert.rejects(service.collectCash({ sub: driverUserId }, orderId, true), NotFoundException);
     assert.ok(!statements.some(entry => entry.sql.includes('UPDATE orders')));
     assert.ok(!statements.some(entry => entry.sql.includes('INSERT INTO cash_collections')));
+  });
+});
+
+describe('DriversService cash wallet', () => {
+  it('separates money still held by the driver from settled amounts',async()=>{
+    const calls:Array<{sql:string;values?:unknown[]}>=[];
+    const pool={query:async(sql:string,values?:unknown[])=>{
+      calls.push({sql,values});
+      if(sql.startsWith('SELECT id FROM drivers'))return{rows:[{id:'driver-9'}],rowCount:1};
+      return{rows:[{openCashRial:'7500',openCount:3,settledTotalRial:'25000',settledCount:2,lastSettledAt:new Date('2026-11-16T09:00:00Z')}],rowCount:1};
+    }};
+    const summary=await new DriversService(pool as never).cashSummary({sub:driverUserId});
+    assert.equal(summary.openCashRial,'7500');
+    assert.equal(summary.openCount,3);
+    assert.equal(summary.settledTotalRial,'25000');
+    assert.equal(summary.lastSettledAt instanceof Date,true);
+    const aggregate=calls[1];
+    assert.match(aggregate.sql,/FROM cash_collections WHERE collected_by=d\.user_id AND settlement_id IS NULL/);
+    assert.match(aggregate.sql,/FROM cash_settlements WHERE driver_id=d\.id/);
+    assert.deepEqual(aggregate.values,['driver-9']);
+  });
+
+  it('refuses a wallet view for an account without an active driver profile',async()=>{
+    const queries:string[]=[];
+    const service=new DriversService({query:async(sql:string)=>{queries.push(sql);return{rows:[],rowCount:0};},connect:async()=>{throw new Error('unreachable');}} as never);
+    await assert.rejects(service.cashSummary({sub:driverUserId}),ForbiddenException);
+    assert.deepEqual(queries,[`SELECT id FROM drivers WHERE user_id=$1 AND status='ACTIVE'`]);
   });
 });
 
