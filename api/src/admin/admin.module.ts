@@ -9,6 +9,8 @@ import { AdminDriversController } from './admin-drivers.controller';
 import { AdminDriversService } from './admin-drivers.service';
 import { AdminOrdersController } from './admin-orders.controller';
 import { AdminOrdersService } from './admin-orders.service';
+import { AdminReportsController } from './admin-reports.controller';
+import { AdminReportsService } from './admin-reports.service';
 
-@Module({ controllers: [AdminSettingsController, AdminBusinessesController, AdminDriversController, AdminOrdersController], providers: [AdminSettingsService, AdminBusinessesService, AdminDriversService, AdminOrdersService, JwtAuthGuard, RolesGuard] })
+@Module({ controllers: [AdminSettingsController, AdminBusinessesController, AdminDriversController, AdminOrdersController, AdminReportsController], providers: [AdminSettingsService, AdminBusinessesService, AdminDriversService, AdminOrdersService, AdminReportsService, JwtAuthGuard, RolesGuard] })
 export class AdminModule {}
