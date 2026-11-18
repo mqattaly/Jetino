@@ -14,18 +14,48 @@ function poolWith(onQuery:(sql:string,values?:unknown[])=>Promise<{rows:unknown[
 }
 
 describe('AdminOrdersService order monitor query',()=>{
-  it('passes an empty filter as NULL so every status is listed',async()=>{
-    const {service,statements}=poolWith(async()=>({rows:[{id:orderId,status:'DELIVERED'}],rowCount:1}));
-    assert.deepEqual(await service.list(),[{id:orderId,status:'DELIVERED'}]);
-    assert.deepEqual(statements[0].values,[null]);
-    assert.match(statements[0].sql,/LIMIT 100/);
+  it('pages with a bounded default and passes an empty filter as NULL',async()=>{
+    const {service,statements}=poolWith(async(sql)=>sql.startsWith('SELECT COUNT')
+      ?{rows:[{totalMatches:'7'}],rowCount:1}
+      :{rows:[{id:orderId,status:'DELIVERED'}],rowCount:1});
+    const page=await service.list();
+    assert.deepEqual(page.items,[{id:orderId,status:'DELIVERED'}]);
+    assert.deepEqual({total:page.totalMatches,limit:page.limit,offset:page.offset},{total:7,limit:25,offset:0});
+    assert.deepEqual(statements[0].values,[null,null,25,0]);
+    assert.match(statements[0].sql,/LIMIT \$3 OFFSET \$4/);
     assert.match(statements[0].sql,/LEFT JOIN delivery_assignments/);
+    assert.match(statements[1].sql,/SELECT COUNT\(\*\)::text AS "totalMatches"/);
+    assert.ok(!statements[1].sql.includes('delivery_assignments'),'the count query should not join assignment tables');
   });
 
-  it('rejects an unknown status filter before querying',async()=>{
+  it('escapes LIKE wildcards in the search term and looks up the short order code',async()=>{
+    const {service,statements}=poolWith(async(sql)=>sql.startsWith('SELECT COUNT')
+      ?{rows:[{totalMatches:'0'}],rowCount:1}
+      :{rows:[],rowCount:0});
+    await service.list('DELIVERED','25%off',undefined,undefined);
+    assert.equal(statements[0].values?.[1],'25\\%off');
+    assert.match(statements[0].sql,/u\.phone LIKE/);
+    assert.match(statements[0].sql,/ESCAPE/);
+    assert.match(statements[0].sql,/b\.name LIKE/);
+    assert.ok(!statements[0].sql.includes('left(o.id::text,8)'),'hex-free search should not use the id branch');
+    await service.list(undefined,'123E4567',undefined,undefined);
+    assert.equal(statements[2].values?.[2],'123e4567');
+    assert.match(statements[2].sql,/left\(o\.id::text,8\)=\$3::text/);
+    assert.match(statements[2].sql,/LIMIT \$4 OFFSET \$5/);
+    assert.deepEqual(statements[3].values,[null,'123E4567','123e4567'],'the count query must use the same filters');
+  });
+
+  it('rejects oversized pages, negative offsets and unusable search text before querying',async()=>{
     let queried=false;
-    const service=new AdminOrdersService({query:async()=>{queried=true;return{rows:[],rowCount:0};}} as never);
+    const service=new AdminOrdersService({query:async()=>{queried=true;return{rows:[],rowCount:0};},connect:async()=>{throw new Error('unreachable');}} as never);
     await assert.rejects(service.list('ANY'),BadRequestException);
+    await assert.rejects(service.list(undefined,'x'),BadRequestException);
+    await assert.rejects(service.list(undefined,'x'.repeat(41)),BadRequestException);
+    await assert.rejects(service.list(undefined,'0912\u0007'),BadRequestException);
+    await assert.rejects(service.list(undefined,undefined,'101'),BadRequestException);
+    await assert.rejects(service.list(undefined,undefined,'0'),BadRequestException);
+    await assert.rejects(service.list(undefined,undefined,'25','-1'),BadRequestException);
+    await assert.rejects(service.list(undefined,undefined,'2.5'),BadRequestException);
     assert.equal(queried,false);
   });
 });

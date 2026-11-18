@@ -14,6 +14,7 @@ export class AdminReportsController {
 
   @Get('summary') summary(@Query('period') period?: string) { return this.reports.summary(period); }
   @Get('cash-outstanding') cashOutstanding() { return this.reports.cashOutstanding(); }
+  @Get('business-performance') businessPerformance(@Query('period') period?: string) { return this.reports.businessPerformance(period); }
   @Post('settlements') settle(@Req() req: AdminRequest, @Body() body: { driverId?: unknown; expectedAmountRial?: unknown; note?: unknown }) {
     return this.reports.settle({ sub: req.user.sub }, body?.driverId, body?.expectedAmountRial, body?.note);
   }

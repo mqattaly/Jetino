@@ -35,6 +35,28 @@ export class AdminReportsService {
     return { currency: 'IRR', period: periodInput, periodLabel: period.label, generatedAt: new Date().toISOString(), ...result.rows[0] };
   }
 
+  async businessPerformance(periodInput: unknown = '7d') {
+    if (typeof periodInput !== 'string' || !periods[periodInput]) throw new BadRequestException('بازهٔ گزارش معتبر نیست.');
+    const result = await this.pool.query(
+      `SELECT b.id,b.name,r.name AS "regionName",b.status,
+              COUNT(o.id)::int AS "orderCount",
+              COUNT(o.id) FILTER (WHERE o.created_at >= now() - $1::interval)::int AS "ordersInPeriod",
+              COALESCE(SUM(o.total_rial) FILTER (WHERE o.created_at >= now() - $1::interval),0)::text AS "revenueRial",
+              COALESCE(SUM(o.commission_rial) FILTER (WHERE o.created_at >= now() - $1::interval),0)::text AS "commissionRial",
+              COUNT(o.id) FILTER (WHERE o.status='PENDING_BUSINESS')::int AS "awaitingResponse",
+              ROUND(AVG(o.estimated_prep_minutes) FILTER (WHERE o.estimated_prep_minutes IS NOT NULL))::int AS "avgPrepMinutes",
+              COALESCE(SUM(o.total_rial) FILTER (WHERE o.status='DELIVERED' AND o.payment_status='PENDING'),0)::text AS "unpaidDeliveredRial"
+       FROM businesses b
+       JOIN regions r ON r.id=b.region_id
+       LEFT JOIN orders o ON o.business_id=b.id
+       GROUP BY b.id,b.name,r.name,b.status
+       HAVING COUNT(o.id) FILTER (WHERE o.created_at >= now() - $1::interval)>0
+       ORDER BY COALESCE(SUM(o.total_rial) FILTER (WHERE o.created_at >= now() - $1::interval),0) DESC
+       LIMIT 50`, [periods[periodInput].interval],
+    );
+    return { period: periodInput, periodLabel: periods[periodInput].label, currency: 'IRR', items: result.rows };
+  }
+
   async cashOutstanding() {
     const result = await this.pool.query(
       `SELECT d.id AS "driverId", u.phone AS "driverPhone", r.name AS "regionName",

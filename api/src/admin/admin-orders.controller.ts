@@ -9,6 +9,6 @@ type AdminRequest=Request&{user:{sub:string;roles:string[]}};
 @Roles('SUPER_ADMIN','OPERATIONS_MANAGER')
 export class AdminOrdersController{
  constructor(@Inject(AdminOrdersService)private readonly orders:AdminOrdersService){}
- @Get() list(@Query('status')status?:string){return this.orders.list(status);}
+ @Get() list(@Query('status')status?:string,@Query('search')search?:string,@Query('limit')limit?:string,@Query('offset')offset?:string){return this.orders.list(status,search,limit,offset);}
  @Patch(':id/assign-driver') assign(@Req()req:AdminRequest,@Param('id')id:string,@Body()body:{driverId?:unknown}){return this.orders.assign(req.user.sub,id,body?.driverId);}
 }

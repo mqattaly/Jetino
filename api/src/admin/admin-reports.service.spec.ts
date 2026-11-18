@@ -39,8 +39,30 @@ describe('AdminReportsService',()=>{
   assert.equal(queried,false);
  });
 
- it('lists open cash per driver using the settlement filter',async()=>{
-  let sql='';
+ it('aggregates revenue and commission per business for the selected period',async()=>{
+  let sql='';let values:unknown[]|undefined;
+  const service=new AdminReportsService({query:async(text:string,params?:unknown[])=>{sql=text;values=params;return{rows:[{id:'b-1',name:'کسب‌وکار نمونه',regionName:'بندر خمیر',status:'ACTIVE',orderCount:12,ordersInPeriod:4,revenueRial:'40000',commissionRial:'4000',awaitingResponse:1,avgPrepMinutes:25,unpaidDeliveredRial:'5000'}],rowCount:1};}} as never);
+  const report=await service.businessPerformance('30d');
+  assert.equal(report.period,'30d');
+  assert.equal(report.periodLabel,'۳۰ روز اخیر');
+  assert.equal(report.items.length,1);
+  assert.equal(report.items[0].revenueRial,'40000');
+  assert.deepEqual(values,['30 days'],'the period must arrive as a bound parameter');
+  assert.match(sql,/SUM\(o\.total_rial\) FILTER \(WHERE o\.created_at >= now\(\) - \$1::interval\)/);
+  assert.match(sql,/SUM\(o\.commission_rial\) FILTER/);
+  assert.match(sql,/HAVING COUNT\(o\.id\) FILTER/);
+  assert.match(sql,/LIMIT 50/);
+  assert.ok(!/u\.phone|delivery_address/i.test(sql),'the performance report must not return customer-level data');
+ });
+
+ it('rejects an unsupported performance period before querying',async()=>{
+  let queried=false;
+  const service=new AdminReportsService({query:async()=>{queried=true;return{rows:[],rowCount:0};}} as never);
+  await assert.rejects(service.businessPerformance('99y'),BadRequestException);
+  assert.equal(queried,false);
+ });
+
+ it('lists open cash per driver using the settlement filter',async()=>{  let sql='';
   const service=new AdminReportsService({query:async(text:string)=>{sql=text;return{rows:[{driverId,driverPhone:'09120000000',regionName:'بندر خمیر',openCount:3,openCashRial:'750000',lastCollectedAt:new Date().toISOString()}],rowCount:1};}} as never);
   const rows=await service.cashOutstanding();
   assert.equal(rows.length,1);

@@ -4,10 +4,49 @@ import { PG_POOL } from '../database/database.module';
 import { notify } from '../notifications/notifications.util';
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const STATUSES=['PENDING_BUSINESS','CONFIRMED','PREPARING','READY_FOR_PICKUP','DRIVER_ASSIGNED','OUT_FOR_DELIVERY','DELIVERED','REJECTED','CANCELLED','UNDER_REVIEW'];
+const MAX_PAGE_SIZE=100; const DEFAULT_PAGE_SIZE=25;
+
+type OrderFilters={status:string|null;search:string|null;limit:number;offset:number};
+
 @Injectable()
 export class AdminOrdersService {
  constructor(@Inject(PG_POOL)private readonly pool:Pool){}
- async list(statusInput?:string){const allowed=['PENDING_BUSINESS','CONFIRMED','PREPARING','READY_FOR_PICKUP','DRIVER_ASSIGNED','OUT_FOR_DELIVERY','DELIVERED','REJECTED','CANCELLED','UNDER_REVIEW'];if(statusInput&&!allowed.includes(statusInput))throw new BadRequestException('فیلتر وضعیت سفارش معتبر نیست.');const result=await this.pool.query(`SELECT o.id,o.status,o.payment_status AS "paymentStatus",o.total_rial AS "totalRial",o.created_at AS "createdAt",o.delivery_address_snapshot AS "deliveryAddress",b.name AS "businessName",u.phone AS "customerPhone",d.id AS "driverId",du.phone AS "driverPhone" FROM orders o JOIN businesses b ON b.id=o.business_id JOIN users u ON u.id=o.customer_id LEFT JOIN delivery_assignments da ON da.order_id=o.id LEFT JOIN drivers d ON d.id=da.driver_id LEFT JOIN users du ON du.id=d.user_id WHERE ($1::order_status IS NULL OR o.status=$1::order_status) ORDER BY o.created_at DESC LIMIT 100`,[statusInput||null]);return result.rows;}
+
+ private parseFilters(statusInput?:string,searchInput?:string,limitInput?:string,offsetInput?:string):OrderFilters{
+  if(statusInput&&!STATUSES.includes(statusInput))throw new BadRequestException('فیلتر وضعیت سفارش معتبر نیست.');
+  let search:string|null=null;
+  if(searchInput!==undefined&&searchInput!==''){
+   const trimmed=searchInput.trim();
+   if(trimmed.length<2||trimmed.length>40)throw new BadRequestException('جستجو باید بین ۲ تا ۴۰ نویسه باشد.');
+   if(/[\u0000-\u001f]/.test(trimmed))throw new BadRequestException('جستجو شامل نویسهٔ غیرقابل قبول است.');
+   search=trimmed;
+  }
+  const limit=limitInput===undefined?DEFAULT_PAGE_SIZE:Number(limitInput);
+  if(!Number.isInteger(limit)||limit<1||limit>MAX_PAGE_SIZE)throw new BadRequestException(`تعداد سطر باید بین ۱ و ${MAX_PAGE_SIZE} باشد.`);
+  const offset=offsetInput===undefined?0:Number(offsetInput);
+  if(!Number.isInteger(offset)||offset<0)throw new BadRequestException('صفحهٔ درخواستی معتبر نیست.');
+  return {status:statusInput??null,search,limit,offset};
+ }
+
+ async list(statusInput?:string,searchInput?:string,limitInput?:string,offsetInput?:string){
+  const {status,search,limit,offset}=this.parseFilters(statusInput,searchInput,limitInput,offsetInput);
+  const escaped=search?search.replace(/[%_\\]/g,match=>`\\${match}`):null;
+  const idPrefix=search&&/^[0-9a-f]{1,8}$/i.test(search.replace(/-/g,''))?search.replace(/-/g,'').toLowerCase():null;
+  const where=`WHERE ($1::order_status IS NULL OR o.status=$1)
+     AND ($2::text IS NULL OR u.phone LIKE '%'||$2||'%' ESCAPE '\\' OR b.name LIKE '%'||$2||'%' ESCAPE '\\'${idPrefix?' OR left(o.id::text,8)=$3::text':''})`;
+  const values:unknown[]=[status,escaped,...(idPrefix?[idPrefix]:[])];
+  const rows=await this.pool.query(
+    `SELECT o.id,o.status,o.payment_status AS "paymentStatus",o.total_rial AS "totalRial",o.created_at AS "createdAt",o.delivery_address_snapshot AS "deliveryAddress",b.name AS "businessName",u.phone AS "customerPhone",d.id AS "driverId",du.phone AS "driverPhone" FROM orders o JOIN businesses b ON b.id=o.business_id JOIN users u ON u.id=o.customer_id LEFT JOIN delivery_assignments da ON da.order_id=o.id LEFT JOIN drivers d ON d.id=da.driver_id LEFT JOIN users du ON du.id=d.user_id ${where} ORDER BY o.created_at DESC LIMIT $${values.length+1} OFFSET $${values.length+2}`,
+    [...values,limit,offset],
+  );
+  const total=await this.pool.query(
+    `SELECT COUNT(*)::text AS "totalMatches" FROM orders o JOIN businesses b ON b.id=o.business_id JOIN users u ON u.id=o.customer_id ${where}`,
+    values,
+  );
+  return {items:rows.rows,totalMatches:Number(total.rows[0]?.totalMatches??0),limit,offset};
+ }
+
  async assign(actor:string,orderId:string,driverId:unknown){if(!uuid.test(orderId)||typeof driverId!=='string'||!uuid.test(driverId))throw new BadRequestException('شناسهٔ سفارش یا راننده معتبر نیست.');const client=await this.pool.connect();try{await client.query('BEGIN');const order=await client.query(`SELECT o.id,o.status,o.customer_id,b.name AS business_name,b.region_id FROM orders o JOIN businesses b ON b.id=o.business_id WHERE o.id=$1 FOR UPDATE OF o`,[orderId]);if(!order.rowCount)throw new NotFoundException('سفارش پیدا نشد.');const current=order.rows[0];if(current.status!=='READY_FOR_PICKUP'&&current.status!=='DRIVER_ASSIGNED')throw new ConflictException('راننده فقط برای سفارش آمادهٔ تحویل قابل تخصیص است.');const driver=await client.query(`SELECT id,user_id FROM drivers WHERE id=$1 AND region_id=$2 AND status='ACTIVE' FOR UPDATE`,[driverId,current.region_id]);if(!driver.rowCount)throw new ConflictException('راننده فعال و متعلق به منطقهٔ سفارش پیدا نشد.');
   await client.query(`INSERT INTO delivery_assignments(order_id,driver_id,assigned_by) VALUES($1,$2,$3) ON CONFLICT(order_id) DO UPDATE SET driver_id=EXCLUDED.driver_id,assigned_by=EXCLUDED.assigned_by,assigned_at=now()`,[orderId,driverId,actor]);
   await client.query(`INSERT INTO driver_assignment_history(order_id,driver_id,assigned_by) VALUES($1,$2,$3)`,[orderId,driverId,actor]);
