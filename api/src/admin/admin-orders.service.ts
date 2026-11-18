@@ -37,7 +37,7 @@ export class AdminOrdersService {
      AND ($2::text IS NULL OR u.phone LIKE '%'||$2||'%' ESCAPE '\\' OR b.name LIKE '%'||$2||'%' ESCAPE '\\'${idPrefix?' OR left(o.id::text,8)=$3::text':''})`;
   const values:unknown[]=[status,escaped,...(idPrefix?[idPrefix]:[])];
   const rows=await this.pool.query(
-    `SELECT o.id,o.status,o.payment_status AS "paymentStatus",o.total_rial AS "totalRial",o.created_at AS "createdAt",o.delivery_address_snapshot AS "deliveryAddress",b.name AS "businessName",u.phone AS "customerPhone",d.id AS "driverId",du.phone AS "driverPhone" FROM orders o JOIN businesses b ON b.id=o.business_id JOIN users u ON u.id=o.customer_id LEFT JOIN delivery_assignments da ON da.order_id=o.id LEFT JOIN drivers d ON d.id=da.driver_id LEFT JOIN users du ON du.id=d.user_id ${where} ORDER BY o.created_at DESC LIMIT $${values.length+1} OFFSET $${values.length+2}`,
+    `SELECT o.id,o.status,o.payment_status AS "paymentStatus",o.total_rial AS "totalRial",o.created_at AS "createdAt",o.delivery_address_snapshot AS "deliveryAddress",o.delivery_latitude_snapshot::float8 AS "deliveryLatitude",o.delivery_longitude_snapshot::float8 AS "deliveryLongitude",b.name AS "businessName",u.phone AS "customerPhone",d.id AS "driverId",du.phone AS "driverPhone" FROM orders o JOIN businesses b ON b.id=o.business_id JOIN users u ON u.id=o.customer_id LEFT JOIN delivery_assignments da ON da.order_id=o.id LEFT JOIN drivers d ON d.id=da.driver_id LEFT JOIN users du ON du.id=d.user_id ${where} ORDER BY o.created_at DESC LIMIT $${values.length+1} OFFSET $${values.length+2}`,
     [...values,limit,offset],
   );
   const total=await this.pool.query(

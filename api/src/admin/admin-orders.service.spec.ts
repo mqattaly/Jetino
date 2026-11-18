@@ -25,6 +25,9 @@ describe('AdminOrdersService order monitor query',()=>{
     assert.match(statements[0].sql,/LIMIT \$3 OFFSET \$4/);
     assert.match(statements[0].sql,/LEFT JOIN delivery_assignments/);
     assert.match(statements[1].sql,/SELECT COUNT\(\*\)::text AS "totalMatches"/);
+    assert.match(statements[0].sql,/o\.delivery_latitude_snapshot::float8 AS "deliveryLatitude"/);
+    assert.match(statements[0].sql,/o\.delivery_longitude_snapshot::float8 AS "deliveryLongitude"/);
+    assert.ok(!/o\.delivery_instructions_snapshot|subtotal_rial/.test(statements[0].sql),'the monitor list should stay lean');
     assert.ok(!statements[1].sql.includes('delivery_assignments'),'the count query should not join assignment tables');
   });
 
