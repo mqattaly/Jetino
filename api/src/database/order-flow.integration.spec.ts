@@ -164,10 +164,11 @@ suite('cash order flow against PostgreSQL', () => {
     await drivers.transition({ sub: uuids.driver }, order.id, 'OUT_FOR_DELIVERY');
     await drivers.transition({ sub: uuids.driver }, order.id, 'DELIVERED');
     const beforeCollection = await drivers.cashSummary({ sub: uuids.driver });
-    assert.equal(beforeCollection.openCashRial, total.toString());
-    assert.equal(beforeCollection.settledTotalRial, '0');
+    assert.deepEqual({ open: beforeCollection.openCashRial, openCount: beforeCollection.openCount, settled: beforeCollection.settledTotalRial }, { open: '0', openCount: 0, settled: '0' }, 'nothing is owed to the driver before the money is actually taken');
 
     const collected = await drivers.collectCash({ sub: uuids.driver }, order.id, true);
+    const wallet = await drivers.cashSummary({ sub: uuids.driver });
+    assert.deepEqual({ open: wallet.openCashRial, openCount: wallet.openCount }, { open: total.toString(), openCount: 1 }, 'the collected cash becomes a balance owed to the driver');
     assert.deepEqual({ amountRial: collected.amountRial, alreadyCollected: collected.alreadyCollected }, { amountRial: total.toString(), alreadyCollected: false });
     assert.equal((await orders.detail({ sub: uuids.customer }, order.id)).payment.status, 'PAID');
     assert.deepEqual(await drivers.collectCash({ sub: uuids.driver }, order.id, true).then(result => result.alreadyCollected), true);
