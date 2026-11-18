@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 0.0.0.0",
+    "postinstall": "node scripts/vercel-build.cjs",
+    "build:vercel": "npm --prefix api run build && npm run build"
   },
   "dependencies": {
     "@neshan-maps-platform/maplibre-sdk": "^6.16.0",

@@ -526,7 +526,8 @@ suite('cash order flow against PostgreSQL', () => {
     const repeat = await notify(pool, recipient, 'SUPPORT_TICKET_OPENED', 'گزارش', 'متن', { ticketId: 't-1' }, { dedupeKey: 't-1' });
     assert.deepEqual({ deduped: repeat.deduped, id: repeat.id }, { deduped: true, id: null });
     assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM notifications WHERE dedupe_key='t-1'`))[0].c, 1);
-    assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM notification_deliveries WHERE notification_id=$1`, [ticket.id]))[0].c, 1, 'a suppressed duplicate cannot queue a second send');
+    // the first insert queued one row per channel; the suppressed duplicate could not add a third
+    assert.deepEqual(await channelsOf(ticket.id), ['IN_APP', 'PUSH'], 'a suppressed duplicate cannot queue a second send');
 
     // 4. one dispatch sends every due row once, and a second pass has nothing to say
     const pushed = await notify(pool, recipient, 'ORDER_PREPARING', 'آماده‌سازی', 'در حال پخت.', { orderId: 'flow-3' });
