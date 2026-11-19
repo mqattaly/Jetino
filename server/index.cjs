@@ -10,6 +10,19 @@ require('../api/node_modules/reflect-metadata');
 
 let expressApp = null;
 let booting = null;
+let bootError = null;
+
+// a cold-start failure has to be readable from outside the platform: the Vercel runtime log is not
+// reachable without a dashboard, and the ledger/health endpoints are the only window an operator has
+function describe(error) {
+  const secrets = ['DATABASE_URL', 'JWT_SECRET', 'OTP_HMAC_SECRET', 'CRON_SECRET', 'VAPID_PRIVATE_KEY'];
+  let text = `${error && error.name ? error.name + ': ' : ''}${error && error.message ? error.message : String(error)}`;
+  for (const key of secrets) {
+    const value = process.env[key];
+    if (value && value.length > 8) text = text.split(value).join('[redacted]');
+  }
+  return text.slice(0, 400);
+}
 
 async function boot() {
   const { NestFactory } = require('../api/node_modules/@nestjs/core');
@@ -24,10 +37,19 @@ async function boot() {
 
 async function ready() {
   if (!expressApp) {
-    booting = boot().then((instance) => {
-      expressApp = instance;
-      return instance;
-    });
+    booting = boot()
+      .then((instance) => {
+        expressApp = instance;
+        bootError = null;
+        return instance;
+      })
+      // a failed boot must not be cached: the next request tries again, and meanwhile the reason
+      // stays on the response so the operator can see what the instance is missing
+      .catch((error) => {
+        bootError = error;
+        booting = null;
+        throw error;
+      });
   }
   return expressApp ?? booting;
 }
@@ -45,6 +67,10 @@ module.exports = async function handler(req, res) {
     console.error('jetino serverless boot failed', error);
     if (!res.headersSent) res.statusCode = 503;
     res.setHeader('content-type', 'application/json; charset=utf-8');
-    res.end(JSON.stringify({ statusCode: 503, message: 'سرویس در حال آماده‌سازی است؛ لطفاً دوباره تلاش کنید.' }));
+    res.end(JSON.stringify({
+      statusCode: 503,
+      message: 'سرویس در حال آماده‌سازی است؛ لطفاً دوباره تلاش کنید.',
+      ...(bootError ? { bootError: describe(bootError) } : {}),
+    }));
   }
 };
