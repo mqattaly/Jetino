@@ -59,6 +59,17 @@ describe('test account seed', () => {
     assert.match(statements, /status','ACTIVE'|status='ACTIVE'/, 'the driver and the business have to be usable at once');
   });
 
+  it('only writes columns the live schema actually has', () => {
+    // `updated_at` is the trap: users/drivers/addresses have it, businesses/menu_categories/products do
+    // not, and one stray mention makes the whole seed abort halfway through the run.
+    for (const statement of buildStatements()) {
+      const table = /^INSERT INTO ([a-z_]+)/.exec(statement)?.[1];
+      if (!table || !/ON CONFLICT/.test(statement)) continue;
+      if (['users', 'drivers', 'addresses'].includes(table)) continue;
+      assert.ok(!/updated_at=/.test(statement), `${table} has no updated_at column: ${statement}`);
+    }
+  });
+
   it('is reachable as a script and documents the flag it depends on', () => {
     const pkg = JSON.parse(readFileSync(resolve(ROOT, 'api/package.json'), 'utf8')) as { scripts: Record<string, string> };
     assert.equal(pkg.scripts['db:seed:accounts'], 'tsx src/database/seed-test-accounts.ts');

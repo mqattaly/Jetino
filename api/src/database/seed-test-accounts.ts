@@ -51,7 +51,9 @@ export function buildStatements(): string[] {
     }
   }
   statements.push(
-    `INSERT INTO businesses(id,owner_id,region_id,name,description,status,latitude,longitude) VALUES ('${BUSINESS_ID}','${OWNER.id}',${regionId},'کبابی نمونه','کسب‌وکار آزمایشی جتینو؛ فقط برای تست محیط.', 'ACTIVE',27.182,56.267) ON CONFLICT(id) DO UPDATE SET owner_id=EXCLUDED.owner_id, region_id=EXCLUDED.region_id, name=EXCLUDED.name, status='ACTIVE', latitude=EXCLUDED.latitude, longitude=EXCLUDED.longitude, updated_at=now()`,
+    // `businesses` grew no `updated_at` column in 001/012, so this upsert must not mention one —
+    // the same reason the two menu tables below stop at their own columns.
+    `INSERT INTO businesses(id,owner_id,region_id,name,description,status,latitude,longitude) VALUES ('${BUSINESS_ID}','${OWNER.id}',${regionId},'کبابی نمونه','کسب‌وکار آزمایشی جتینو؛ فقط برای تست محیط.','ACTIVE',27.182,56.267) ON CONFLICT(id) DO UPDATE SET owner_id=EXCLUDED.owner_id, region_id=EXCLUDED.region_id, name=EXCLUDED.name, status='ACTIVE', latitude=EXCLUDED.latitude, longitude=EXCLUDED.longitude`,
     `INSERT INTO menu_categories(id,business_id,name,sort_order) VALUES ('${CATEGORY_ID}','${BUSINESS_ID}','کباب',1) ON CONFLICT(id) DO UPDATE SET business_id=EXCLUDED.business_id, name=EXCLUDED.name, sort_order=EXCLUDED.sort_order`,
     `INSERT INTO products(id,category_id,name,description,price_rial,is_available) VALUES ('20000000-0000-4000-8000-000000000035','${CATEGORY_ID}','چلوکباب کوبده','دو سیخ کوبده با برنج و گوجه کبابی',1850000,true) ON CONFLICT(id) DO UPDATE SET category_id=EXCLUDED.category_id, price_rial=EXCLUDED.price_rial, is_available=true`,
     `INSERT INTO products(id,category_id,name,description,price_rial,is_available) VALUES ('20000000-0000-4000-8000-000000000036','${CATEGORY_ID}','جوجه‌کباب','یک سیخ جوجه زعفرانی با برنج',1650000,true) ON CONFLICT(id) DO UPDATE SET category_id=EXCLUDED.category_id, price_rial=EXCLUDED.price_rial, is_available=true`,
