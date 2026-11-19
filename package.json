@@ -14,7 +14,8 @@
     "@neshan-maps-platform/maplibre-sdk": "^6.16.0",
     "lucide-react": "^0.468.0",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "web-push": "^4.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",

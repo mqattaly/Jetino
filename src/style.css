@@ -96,3 +96,28 @@
 .push-pref{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text);cursor:pointer;padding:5px 10px;border:1px solid var(--line);border-radius:999px}
 .push-pref input{accent-color:var(--accent);margin:0}
 .push-pref small{color:#e9c671;font-size:10.5px}
+
+/* §7.12 admin delivery ledger */
+.delivery-card .queue-heading{flex-wrap:wrap}
+.delivery-channel{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;margin:2px 0 12px}
+.delivery-channel small{font-size:11.5px;color:var(--muted);line-height:1.7}
+.delivery-flag{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;width:max-content;padding:4px 10px;border-radius:999px;border:1px solid var(--line)}
+.delivery-flag.on{color:#7ddba0;border-color:rgba(125,219,160,.45)}
+.delivery-flag.off{color:#e9c671;border-color:rgba(233,198,113,.4)}
+.delivery-rows{display:flex;flex-direction:column;gap:8px}
+.delivery-row{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.015)}
+.delivery-row.sent{border-color:rgba(125,219,160,.28)}
+.delivery-row.failed{border-color:rgba(255,139,139,.35)}
+.delivery-row.skipped{opacity:.78}
+.delivery-main{display:flex;flex-direction:column;gap:3px;min-width:0}
+.delivery-main b{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.delivery-main small{font-size:11px;color:var(--muted)}
+.delivery-meta{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.delivery-meta small{font-size:10.5px;color:var(--muted)}
+.delivery-meta code{font-size:10.5px;color:#ff9d9d;background:rgba(255,139,139,.08);border-radius:7px;padding:2px 7px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr}
+.delivery-state{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;border:1px solid var(--line)}
+.delivery-state.pending{color:#e9c671;border-color:rgba(233,198,113,.4)}
+.delivery-state.sent{color:#7ddba0;border-color:rgba(125,219,160,.4)}
+.delivery-state.failed{color:#ff8b8b;border-color:rgba(255,139,139,.45)}
+.delivery-state.skipped{color:var(--muted)}
+@media (max-width:760px){.delivery-row{grid-template-columns:1fr;align-items:start}.delivery-meta{align-items:flex-start}}
