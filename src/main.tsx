@@ -6,7 +6,10 @@ import { BusinessOrdersApp, CustomerOrdersApp } from './OperationsApp';
 import DriverApp from './DriverApp';
 import NotificationApp from './NotificationApp';
 import BusinessMenuApp from './BusinessMenuApp';
+import '@fontsource-variable/vazirmatn';
+import './tokens.css';
 import './style.css';
+import './theme.css';
 
 const path = window.location.pathname;
 const Root = path.startsWith('/admin') ? AdminApp : path.startsWith('/business/menu') ? BusinessMenuApp : path.startsWith('/business') ? BusinessOrdersApp : path.startsWith('/driver') ? DriverApp : path.startsWith('/notifications') ? NotificationApp : path.startsWith('/orders') ? CustomerOrdersApp : App;
