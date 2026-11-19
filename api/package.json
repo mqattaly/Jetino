@@ -8,6 +8,7 @@
     "test": "tsx --test src/**/*.spec.ts",
     "start": "node dist/main.js",
     "db:migrate": "tsx src/database/migrate.ts",
+    "db:baseline": "tsx src/database/baseline.ts",
     "admin:promote": "tsx src/database/promote-admin.ts",
     "db:seed:demo": "tsx src/database/seed-demo.ts",
     "db:backup": "bash scripts/backup.sh",

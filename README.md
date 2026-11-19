@@ -123,7 +123,9 @@ npm run admin:promote
 
 `vercel.json` دو خروجی می‌سازد: سایت ایستا از `dist` و یک تابع `server/index.cjs` که همان `AppModule` نتس‌جی را درون خود بالا می‌آورد و `/api/*` به آن می‌رود؛ تشخیص خودکار framework خاموش است تا فایل‌های زیر `api/` به‌جای یک تابع، ده‌ها تابع نشوند. `scripts/vercel-build.cjs` هنگام build، وابستگی‌های `api` را نصب، بیلد و مایگریشن را اجرا می‌کند.
 
-متغیرهای لازم در پروژه (نه در مخزن): `DATABASE_URL` (استخر `aws-0-eu-central-1.pooler.supabase.com:5432` با `?sslmode=require`)، `JWT_SECRET`، `OTP_HMAC_SECRET`، `CRON_SECRET` و در صورت نیاز کلیدهای VAPID. `DATABASE_URL_TEST` تنها در CI پر می‌شود.
+متغیرهای لازم در پروژه (نه در مخزن): `DATABASE_URL` (استخر `aws-0-eu-central-1.pooler.supabase.com:5432` با `?sslmode=require`)، `JWT_SECRET`، `OTP_HMAC_SECRET`، `CRON_SECRET` و در صورت نیاز کلیدهای VAPID. برای استخر سوپابیس `DATABASE_URL` را با `?sslmode=no-verify` بگذارید (گواهی استخر زنجیرهٔ self‑signed دارد و حالت `require` در `pg` همان `verify-full` است)؛ برای اتصال مستقیم می‌توانید `?sslmode=verify-full&sslrootcert=/path/supabase-ca.pem` بدهید. `DATABASE_URL_TEST` تنها در CI پر می‌شود.
+
+اگر اسکیما را برون از این مخزن ساخته‌اید (مثلاً با `supabase db push` یا بازگردانی یک backup)، جدول `schema_migrations` خالی است و `db:migrate` اولین مایگریشن را دوباره اجرا می‌کند و روی همان قیدِ از‌قبل‌موجود می‌شکند. یک‌بار `npm run db:baseline` را در `api` اجرا کنید: نام فایل‌های اعمال‌شده را در دفتر ثبت می‌کند و هیچ شیءای در دیتابیس نمی‌سازد. پیش‌فرض آن dry run است و با کد خروجی ناموفق می‌ایستد؛ نوشتن فقط با `BASELINE_CONFIRM=yes` انجام می‌شود، چون این فرمان ادعا می‌کند SQL از قبل اجرا شده است.
 
 دو زمان‌بند وجود دارد و هر دو یک کار را می‌کنند، پس نبود یکی خطرناک نیست: `crons` در `vercel.json` روزی یک‌بار (سقف طرح رایگان Vercel) و `.github/workflows/notification-sweep.yml` هر پنج دقیقه. برای فعال‌کردن دومی، `JETINO_API_URL` را در Variables و `JETINO_CRON_SECRET` را در Secrets همان مخزن بگذارید. تمرین بازیابی هفتگی (§۷٫۳) هم با `schedule` در `ci.yml` اجرا می‌شود؛ زمان‌بند گیت‌هاب فقط از شاخهٔ پیش‌فرض اجرا می‌شود، پس تا این فایل‌ها در `main` نرفته‌اند، صف با همان کوشش روزانهٔ Vercel پیش می‌رود.
 
