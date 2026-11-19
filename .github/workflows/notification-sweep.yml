@@ -23,7 +23,9 @@ jobs:
             echo "Set them in Settings → Secrets and variables → Actions to run the queue from here." >&2
             exit 1
           fi
-          response=$(curl -fsS --max-time 25 -X POST "${JETINO_API_URL%/}/api/v1/notifications/dispatch" \
-            -H "Authorization: Bearer $CRON_SECRET" -H 'content-type: application/json' \
-            -d '{"limit":50}')
+          # the scheduler route is the GET half: POST /dispatch is the staff action and needs a
+          # session with a review role, so a scheduler calling it would only ever be rejected
+          response=$(curl -fsS --max-time 25 \
+            "${JETINO_API_URL%/}/api/v1/notifications/dispatch?limit=50" \
+            -H "Authorization: Bearer $CRON_SECRET")
           echo "dispatch: $response"

@@ -46,6 +46,16 @@ describe('vercel deployment configuration', () => {
     assert.match(cron.schedule, /^\d+ \d+ \* \* \*$/, 'the hobby plan allows one run a day; faster cadence belongs to the Actions workflow');
   });
 
+  it('drives the scheduler route the API actually opens for it', () => {
+    const workflow = readFileSync(resolve(ROOT, '.github/workflows/notification-sweep.yml'), 'utf8').replace(/\s+/g, ' ');
+    const controller = readFileSync(resolve(__dirname, 'notifications/notification-delivery.controller.ts'), 'utf8').replace(/\s+/g, ' ');
+    // POST /notifications/dispatch is the staff action behind a JWT; a scheduler must use the GET half
+    assert.match(controller, /@Get\('dispatch'\)/);
+    assert.match(workflow, /notifications\/dispatch\?limit=50/);
+    assert.doesNotMatch(workflow, /-X POST/, 'the cron cannot hold a staff session');
+    assert.match(workflow, /Authorization: Bearer \$CRON_SECRET/, 'the bearer header is what cronAuthorized checks');
+  });
+
   it('requires nothing outside its own bundle root', () => {
     const entry = readFileSync(resolve(ROOT, nodeBuilders[0].src), 'utf8');
     const paths = [...entry.matchAll(/require\('(\.[^']+)'\)/g)].map((match) => match[1]);
