@@ -38,6 +38,34 @@ function mountedControllers(): Map<string, string[]> {
   return seen;
 }
 
+/** Full `METHOD /path` for every handler on every mounted controller. */
+function mountedRoutes(): string[] {
+  const { AppModule } = require(join(sourceRoot, 'app.module.ts')) as { AppModule: Function };
+  const routes: string[] = [];
+  const queue: unknown[] = [AppModule];
+  const methods: Record<number, string> = { 0: 'GET', 1: 'POST', 2: 'PUT', 3: 'DELETE', 4: 'PATCH', 5: 'ALL', 6: 'OPTIONS', 7: 'HEAD' };
+  while (queue.length) {
+    const node = queue.shift() as Function | { module?: unknown };
+    const target = (typeof node === 'function' ? node : (node as { module?: unknown }).module) as Function | undefined;
+    if (!target) continue;
+    for (const controller of (Reflect.getMetadata('controllers', target) ?? []) as Function[]) {
+      const prefix = String(Reflect.getMetadata('path', controller) ?? '');
+      for (const key of Object.getOwnPropertyNames(controller.prototype)) {
+        if (key === 'constructor') continue;
+        const handler = (controller.prototype as unknown as Record<string, unknown>)[key] as Function;
+        const method = methods[Number(Reflect.getMetadata('method', handler))];
+        if (!method) continue;
+        const paths = Reflect.getMetadata('path', handler);
+        for (const path of (Array.isArray(paths) ? paths : [paths ?? '']) as string[]) {
+          routes.push(`${method} /${[prefix, String(path)].filter(Boolean).join('/')}`.replace(/\/+/g, '/'));
+        }
+      }
+    }
+    for (const imported of (Reflect.getMetadata('imports', target) ?? []) as unknown[]) if (imported) queue.push(imported);
+  }
+  return routes;
+}
+
 describe('module graph', () => {
   it('mounts every controller that exists in the source tree', () => {
     const mounted = mountedControllers();
@@ -63,9 +91,18 @@ describe('module graph', () => {
     }
   });
 
-  it('wires each feature module exactly once', () => {
-    const mounted = mountedControllers();
-    const duplicates = Array.from(mounted.entries()).filter(([, owners]) => owners.length > 1).map(([path, owners]) => `${path}: ${owners.join(', ')}`);
-    assert.deepEqual(duplicates, [], 'the same route prefix registered twice makes the served handler depend on module order');
+  it('registers each method and path once, however many controllers share a prefix', () => {
+    const routes = mountedRoutes();
+    const duplicates = routes.filter((route, index) => routes.findIndex(other => other === route) !== index);
+    assert.deepEqual([...new Set(duplicates)], [], 'two controllers answering the same METHOD path makes the handler depend on module order');
+  });
+
+  it('keeps the notifications prefix split between the inbox and the delivery ledger', () => {
+    // both controllers live under `notifications`; that is only safe because their paths are disjoint
+    const routes = mountedRoutes();
+    for (const route of ['GET /notifications/:id/delivery', 'GET /notifications/delivery/stats', 'POST /notifications/dispatch']) {
+      assert.ok(routes.includes(route), `${route} has to stay reachable`);
+    }
+    assert.ok(!routes.includes('GET /notifications/delivery'), 'the admin queue must not shadow the per-notification route');
   });
 });
