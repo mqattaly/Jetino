@@ -3,6 +3,11 @@ name: CI
 on:
   push:
   pull_request:
+  # §7.3 asks for a restore drill that happens on the calendar, not only when someone
+  # pushes; a scheduled run always starts from the default branch, so merge this to keep it.
+  schedule:
+    - cron: '0 3 * * 3'
+  workflow_dispatch:
 
 jobs:
   verify:

@@ -111,4 +111,20 @@ npm run admin:promote
 - مسیر `/driver/deliveries` برای حرکت به «در مسیر» و «تحویل‌شده» است؛ پس از تحویل، راننده دریافت کامل وجه نقد را صریحاً تأیید می‌کند و پرداخت از `PENDING` به `PAID` می‌رود. رویداد وصول در `cash_collections` و audit ثبت می‌شود.
 - رابط مشتری از دیتابیس فهرست/منو می‌گیرد؛ مسیر `/orders` پیگیری مشتری، `/notifications` اعلان‌های درون‌برنامه‌ای، `/business/orders` پنل سفارش‌های کسب‌وکار و `/business/menu` مدیریت دسته‌بندی و موجودی محصولات است. مدیریت منو از APIهای `GET /api/v1/businesses/mine/:id/menu`, `PATCH /api/v1/businesses/mine/:id/orderability`, `POST /api/v1/businesses/:id/categories`, `POST /api/v1/businesses/categories/:categoryId/products`, `PATCH /api/v1/businesses/products/:productId` و `PATCH /api/v1/businesses/products/:productId/availability` استفاده می‌کند و همه به مالک کسب‌وکار محدودند. Push و SMS عملیاتی (غیر از OTP) و پرداخت آنلاین هنوز متصل نیستند.
 
+### دفتر ارسال اعلان‌ها و زمان‌بند
+
+هر اعلانی که سرور می‌نویسد، در همان تراکنش یک ردیف `IN_APP` و به‌ازای هر دستگاه فعال یک ردیف `PUSH` در `notification_deliveries` می‌گیرد (تریگر `trg_notifications_queue_delivery`)؛ هیچ مسیر جدیدی نمی‌تواند اعلانی بدون ردیف ارسال بسازد. `notify(..., {dedupeKey})` کلید تکرار را در دیتابیس قفل می‌کند (ایندکس یکتای جزئی) و در نتیجهٔ دوباره‌کوشی سفارش یا تیکت، اعلان تکراری ساخته و ارسال نمی‌شود. کاربر هدف می‌تواند رویدادها را خاموش کند (`GET/PUT /api/v1/notifications/push/preferences`) و ردیف `SKIPPED` با دلیل روی همان اعلان در inbox دیده می‌شود.
+
+مسیرهای مدیر کل: `GET /api/v1/notifications/delivery/stats`، `GET /api/v1/notifications/delivery/queue?state=`، `POST /api/v1/notifications/delivery/:id/retry`، `POST /api/v1/notifications/dispatch` و `GET /api/v1/notifications/dispatch` (ویژهٔ زمان‌بند، با هدر `Authorization: Bearer $CRON_SECRET`). پنل مدیر کل در `/admin` همین دفتر را با فیلتر وضعیت و دکمهٔ «اجرای صف» نشان می‌دهد. تحویل at-least-once است: هر ردیف تا ۵ تلاش با فاصلهٔ ۳۰/۱۲۰/۶۰۰/۱۸۰۰ ثانیه، و اشتراکی که سرویس ارسال آن را رد کند (۴۰۴/۴۱۰) غیرفعال می‌شود.
+
+برای فعال‌شدن واقعی وب‌پوش، `VAPID_PUBLIC_KEY`، `VAPID_PRIVATE_KEY` و `VAPID_SUBJECT` را تنظیم کنید (`npx web-push generate-vapid-keys`). بدون آن‌ها صف باز می‌ماند و اعلان‌ها `SKIPPED` با دلیل `PUSH_NOT_CONFIGURED` می‌شوند — نه `SENT` صوری.
+
+### استقرار روی Vercel و Supabase
+
+`vercel.json` دو خروجی می‌سازد: سایت ایستا از `dist` و یک تابع `server/index.cjs` که همان `AppModule` نتس‌جی را درون خود بالا می‌آورد و `/api/*` به آن می‌رود؛ تشخیص خودکار framework خاموش است تا فایل‌های زیر `api/` به‌جای یک تابع، ده‌ها تابع نشوند. `scripts/vercel-build.cjs` هنگام build، وابستگی‌های `api` را نصب، بیلد و مایگریشن را اجرا می‌کند.
+
+متغیرهای لازم در پروژه (نه در مخزن): `DATABASE_URL` (استخر `aws-0-eu-central-1.pooler.supabase.com:5432` با `?sslmode=require`)، `JWT_SECRET`، `OTP_HMAC_SECRET`، `CRON_SECRET` و در صورت نیاز کلیدهای VAPID. `DATABASE_URL_TEST` تنها در CI پر می‌شود.
+
+دو زمان‌بند وجود دارد و هر دو یک کار را می‌کنند، پس نبود یکی خطرناک نیست: `crons` در `vercel.json` روزی یک‌بار (سقف طرح رایگان Vercel) و `.github/workflows/notification-sweep.yml` هر پنج دقیقه. برای فعال‌کردن دومی، `JETINO_API_URL` را در Variables و `JETINO_CRON_SECRET` را در Secrets همان مخزن بگذارید. تمرین بازیابی هفتگی (§۷٫۳) هم با `schedule` در `ci.yml` اجرا می‌شود؛ زمان‌بند گیت‌هاب فقط از شاخهٔ پیش‌فرض اجرا می‌شود، پس تا این فایل‌ها در `main` نرفته‌اند، صف با همان کوشش روزانهٔ Vercel پیش می‌رود.
+
 > دادهٔ نمایشی فقط با `npm run db:seed:demo` و فقط در محیط توسعه ساخته می‌شود. کد OTP آزمایشی یا میان‌بر ورود وجود ندارد.
