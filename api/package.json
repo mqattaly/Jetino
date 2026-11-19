@@ -11,13 +11,14 @@
     "db:baseline": "tsx src/database/baseline.ts",
     "admin:promote": "tsx src/database/promote-admin.ts",
     "db:seed:demo": "tsx src/database/seed-demo.ts",
+    "db:seed:accounts": "tsx src/database/seed-test-accounts.ts",
     "db:backup": "bash scripts/backup.sh",
     "db:restore-drill": "bash scripts/restore-drill.sh"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
-    "@nestjs/jwt": "^12.0.5",
+    "@nestjs/jwt": "^11.0.2",
     "@nestjs/platform-express": "^11.0.0",
     "dotenv": "^18.0.10",
     "pg": "^8.16.3",

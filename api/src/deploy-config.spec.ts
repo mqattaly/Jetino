@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 
@@ -54,6 +54,42 @@ describe('vercel deployment configuration', () => {
     assert.match(workflow, /notifications\/dispatch\?limit=50/);
     assert.doesNotMatch(workflow, /-X POST/, 'the cron cannot hold a staff session');
     assert.match(workflow, /Authorization: Bearer \$CRON_SECRET/, 'the bearer header is what cronAuthorized checks');
+  });
+
+  it('loads the API boot dependencies as CommonJS', () => {
+    // api/dist is CommonJS, so anything a module-scope `import … from` turns into `require()` has to
+    // be requirable. web-push is deliberately absent from this rule: it is reached through an awaited
+    // dynamic import() inside a try/catch, so an ESM-only web-push degrades the sender instead of
+    // killing the cold start. @nestjs/jwt v12 shipped as ESM-only and broke the deploy exactly this way.
+    const pkg = JSON.parse(readFileSync(resolve(ROOT, 'api/package.json'), 'utf8')) as { dependencies: Record<string, string> };
+    const runtime = Object.keys(pkg.dependencies);
+    const files: string[] = [];
+    const walk = (directory: string) => {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        const path = resolve(directory, entry.name);
+        if (entry.isDirectory()) walk(path);
+        else if (path.endsWith('.ts') && !path.endsWith('.spec.ts')) files.push(path);
+      }
+    };
+    walk(resolve(ROOT, 'api/src'));
+    const staticallyImported = new Set<string>();
+    for (const file of files) {
+      for (const match of readFileSync(file, 'utf8').matchAll(/^import\s[^;]*?from\s*['"]([^'".\/][^'"]*)['"]/gm)) {
+        staticallyImported.add(match[1].startsWith('@') ? match[1].split('/').slice(0, 2).join('/') : match[1].split('/')[0]);
+      }
+    }
+    const esmOnly = runtime.filter((name) => {
+      if (!staticallyImported.has(name)) return false;
+      try {
+        const meta = JSON.parse(readFileSync(require.resolve(`${name}/package.json`, { paths: [resolve(ROOT, 'api')] }), 'utf8')) as { type?: string; exports?: Record<string, unknown> };
+        const conditions = meta.exports?.['.'] ?? meta.exports;
+        const hasRequire = typeof conditions === 'object' && conditions !== null && 'require' in (conditions as Record<string, unknown>);
+        return meta.type === 'module' && !hasRequire;
+      } catch {
+        return false;
+      }
+    });
+    assert.deepEqual(esmOnly, [], 'an ESM-only dependency in the boot graph makes the serverless function fail to start');
   });
 
   it('requires nothing outside its own bundle root', () => {

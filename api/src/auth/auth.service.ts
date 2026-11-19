@@ -27,7 +27,10 @@ export class AuthService {
     const phone = this.normalizePhone(input);
     const apiKey = process.env.KAVENEGAR_API_KEY;
     const template = process.env.KAVENEGAR_OTP_TEMPLATE;
-    if (!apiKey || !template) throw new ServiceUnavailableException('ارسال پیامک هنوز پیکربندی نشده است.');
+    // an environment without an SMS provider can still be walked end to end, but only when someone
+    // explicitly opens that door: the flag is the whole switch, and removing it closes the flow again
+    const echoCode = process.env.JETINO_ALLOW_TEST_OTP === 'yes';
+    if ((!apiKey || !template) && !echoCode) throw new ServiceUnavailableException('ارسال پیامک هنوز پیکربندی نشده است.');
     const recent = await this.pool.query(
       `SELECT count(*)::int AS count FROM otp_challenges WHERE phone=$1 AND created_at > now() - interval '15 minutes'`, [phone],
     );
@@ -38,17 +41,28 @@ export class AuthService {
       `INSERT INTO otp_challenges(phone,code_digest,expires_at) VALUES($1,$2,now()+interval '5 minutes') RETURNING id`,
       [phone, this.digest(phone, code)],
     );
-    const url = new URL(`https://api.kavenegar.com/v1/${encodeURIComponent(apiKey)}/verify/lookup.json`);
-    url.searchParams.set('receptor', phone);
-    url.searchParams.set('token', code);
-    url.searchParams.set('template', template);
-    try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-      const result = await response.json() as { return?: { status?: number } };
-      if (!response.ok || result.return?.status !== 200) throw new Error('SMS provider rejected the request');
-    } catch {
-      await this.pool.query('UPDATE otp_challenges SET consumed_at=now() WHERE id=$1', [inserted.rows[0].id]);
-      throw new ServiceUnavailableException('ارسال پیامک انجام نشد؛ لطفاً کمی بعد دوباره تلاش کنید.');
+    if (apiKey && template) {
+      const url = new URL(`https://api.kavenegar.com/v1/${encodeURIComponent(apiKey)}/verify/lookup.json`);
+      url.searchParams.set('receptor', phone);
+      url.searchParams.set('token', code);
+      url.searchParams.set('template', template);
+      try {
+        const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        const result = await response.json() as { return?: { status?: number } };
+        if (!response.ok || result.return?.status !== 200) throw new Error('SMS provider rejected the request');
+      } catch {
+        await this.pool.query('UPDATE otp_challenges SET consumed_at=now() WHERE id=$1', [inserted.rows[0].id]);
+        throw new ServiceUnavailableException('ارسال پیامک انجام نشد؛ لطفاً کمی بعد دوباره تلاش کنید.');
+      }
+    }
+    if (echoCode) {
+      // the digest already stored is the one this code matches, so the echo is a preview of the SMS
+      // and nothing about verification changes: same expiry, same five attempts, consumed once.
+      return {
+        message: 'محیط آزمایشی: پیامکی ارسال نمی‌شود و کد در همین پاسخ آمده است. با حذف JETINO_ALLOW_TEST_OTP این در بسته می‌شود.',
+        expiresInSeconds: 300,
+        testCode: code,
+      };
     }
     return { message: 'اگر شماره معتبر باشد، کد ورود ارسال می‌شود.', expiresInSeconds: 300 };
   }
