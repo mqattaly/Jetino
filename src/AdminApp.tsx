@@ -8,6 +8,7 @@ import AdminAuditLog from './AdminAuditLog';
 import { AdminFeedbackBoard, SupportPanel } from './FeedbackSupport';
 import { CancellationBoard } from './Cancellations';
 import { NotificationDeliveryBoard } from './NotificationDelivery';
+import { otpRequestNotice } from './testOtpNotice';
 
 type Settings = { region: string; regionSlug: string; deliveryFeeRial: string | null; defaultCommissionBps: number; currency: string };
 type ReportSummary={totalOrders:string;ordersInPeriod:string;cancelledOrders:string;cancelledInPeriod:string;openCancellationRequests:string;refundedRialInPeriod:string;period:string;periodLabel:string;awaitingBusiness:string;inDelivery:string;deliveredOrders:string;grossOrderValueRial:string;cashCollectedRial:string;unsettledCashRial:string;unsettledCollections:string;generatedAt:string};
@@ -33,7 +34,7 @@ export default function AdminApp() {
   useEffect(() => { document.title = 'تنظیمات مدیر کل | جتینو'; }, []);
   const requestCode = async () => {
     setBusy(true); setError(''); setNotice('');
-    try { await api('/api/v1/auth/otp/request', { phone }); setStep('code'); setNotice('اگر شماره معتبر باشد، کد ورود پیامک می‌شود.'); }
+    try { const sent = await api('/api/v1/auth/otp/request', { phone }); setStep('code'); setNotice(otpRequestNotice(sent, 'اگر شماره معتبر باشد، کد ورود پیامک می‌شود.')); }
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
   const verify = async () => {
