@@ -121,7 +121,7 @@ npm run admin:promote
 
 ### استقرار روی Vercel و Supabase
 
-`vercel.json` دو خروجی می‌سازد: سایت ایستا از `dist` و یک تابع `server/index.cjs` که همان `AppModule` نتس‌جی را درون خود بالا می‌آورد و `/api/*` به آن می‌رود؛ تشخیص خودکار framework خاموش است تا فایل‌های زیر `api/` به‌جای یک تابع، ده‌ها تابع نشوند. `scripts/vercel-build.cjs` هنگام build، وابستگی‌های `api` را نصب، بیلد و مایگریشن را اجرا می‌کند.
+`vercel.json` دو خروجی می‌سازد: سایت ایستا از `dist` و یک تابع `api-server.cjs` (در ریشهٔ مخزن، چون بیلدرِ Vercel پوشهٔ فایل ورودی را ریشهٔ تابع می‌گیرد و از `server/` نمی‌شود به `api/` رسید) که همان `AppModule` نتس‌جی را درون خود بالا می‌آورد و `/api/*` به آن می‌رود؛ تشخیص خودکار framework خاموش است تا فایل‌های زیر `api/` به‌جای یک تابع، ده‌ها تابع نشوند. `scripts/vercel-build.cjs` هنگام build، وابستگی‌های `api` را نصب، بیلد و مایگریشن را اجرا می‌کند.
 
 متغیرهای لازم در پروژه (نه در مخزن): `DATABASE_URL` (استخر `aws-0-eu-central-1.pooler.supabase.com:5432` با `?sslmode=require`)، `JWT_SECRET`، `OTP_HMAC_SECRET`، `CRON_SECRET` و در صورت نیاز کلیدهای VAPID. برای استخر سوپابیس `DATABASE_URL` را با `?sslmode=no-verify` بگذارید (گواهی استخر زنجیرهٔ self‑signed دارد و حالت `require` در `pg` همان `verify-full` است)؛ برای اتصال مستقیم می‌توانید `?sslmode=verify-full&sslrootcert=/path/supabase-ca.pem` بدهید. `DATABASE_URL_TEST` تنها در CI پر می‌شود.
 

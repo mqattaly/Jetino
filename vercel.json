@@ -16,7 +16,7 @@
       }
     },
     {
-      "src": "server/index.cjs",
+      "src": "api-server.cjs",
       "use": "@vercel/node",
       "config": {
         "maxDuration": 30,
