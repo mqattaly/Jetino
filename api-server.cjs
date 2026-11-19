@@ -72,7 +72,10 @@ module.exports = async function handler(req, res) {
     res.end(JSON.stringify({
       statusCode: 503,
       message: 'سرویس در حال آماده‌سازی است؛ لطفاً دوباره تلاش کنید.',
-      ...(bootError ? { bootError: describe(bootError) } : {}),
+      // describe the error that was actually thrown: when the app booted and the request itself
+      // failed, `bootError` is null and the response would otherwise carry no diagnosis at all
+      bootError: describe(bootError ?? error),
+      bootstrapped: expressApp != null,
     }));
   }
 };
