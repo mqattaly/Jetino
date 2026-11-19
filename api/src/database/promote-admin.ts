@@ -13,7 +13,9 @@ async function promote() {
     const user = await client.query('SELECT id FROM users WHERE phone=$1 FOR UPDATE', [phone]);
     if (!user.rowCount) throw new Error('No user found. The user must complete OTP login before promotion.');
     await client.query(`INSERT INTO user_roles(user_id,role) VALUES($1,'SUPER_ADMIN') ON CONFLICT DO NOTHING`, [user.rows[0].id]);
-    await client.query(`INSERT INTO audit_logs(actor_id,action,entity_type,entity_id) VALUES($1,'SUPER_ADMIN_BOOTSTRAPPED','USER',$1)`, [user.rows[0].id]);
+    // the audit row names the same user twice, but actor_id is uuid and entity_id is varchar: one
+    // placeholder for both makes PostgreSQL refuse the statement, so the value is bound twice
+    await client.query(`INSERT INTO audit_logs(actor_id,action,entity_type,entity_id) VALUES($1,'SUPER_ADMIN_BOOTSTRAPPED','USER',$2)`, [user.rows[0].id, user.rows[0].id]);
     await client.query('COMMIT');
     console.log('SUPER_ADMIN role granted. Ask the user to sign in again so the new role is included in the JWT.');
   } catch (error) {

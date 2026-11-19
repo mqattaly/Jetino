@@ -98,7 +98,9 @@ export class AuthService {
       const user = userResult.rows[0] as { id: string; phone: string; display_name: string | null };
       await client.query(`INSERT INTO user_roles(user_id,role) VALUES($1,'CUSTOMER') ON CONFLICT DO NOTHING`, [user.id]);
       const roles = await client.query('SELECT role FROM user_roles WHERE user_id=$1 ORDER BY role', [user.id]);
-      await client.query(`INSERT INTO audit_logs(actor_id,action,entity_type,entity_id) VALUES($1,'AUTH_OTP_LOGIN','USER',$1)`, [user.id]);
+      // actor_id is uuid and entity_id is varchar, so one placeholder cannot serve both columns —
+      // PostgreSQL would refuse the insert and every successful login would answer 500.
+      await client.query(`INSERT INTO audit_logs(actor_id,action,entity_type,entity_id) VALUES($1,'AUTH_OTP_LOGIN','USER',$2)`, [user.id, user.id]);
       await client.query('COMMIT');
       const roleNames = roles.rows.map((item: { role: string }) => item.role);
       const accessToken = await this.jwt.signAsync(
