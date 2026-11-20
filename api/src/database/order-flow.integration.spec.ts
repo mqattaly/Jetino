@@ -533,6 +533,10 @@ suite('cash order flow against PostgreSQL', () => {
     const requeue = (notificationId: string) =>
       pool.query(`UPDATE notification_deliveries SET state='PENDING', attempts=0, next_attempt_at=now() WHERE notification_id=$1 AND channel='PUSH'`, [notificationId]);
 
+    // Earlier flow tests can create more than one dispatch batch. Drain them before
+    // making assertions about this test's own deliveries.
+    while ((await deliveries.dispatch()).claimed > 0) { /* drain */ }
+
     // 1. an inbox row always has a delivery row beside it, even with no browser registered
     const plain = await notify(pool, recipient, 'ORDER_CONFIRMED', 'سفارش تأیید شد', 'تأیید شد.', { orderId: 'flow-1' });
     assert.ok(plain.id, 'notify returns the row it wrote');
