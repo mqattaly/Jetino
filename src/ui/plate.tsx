@@ -14,7 +14,8 @@ export const PLATE_LETTERS = ['ب', 'ج', 'د', 'س', 'ص', 'ط', 'ق', 'ل', '�
 const FA_DIGITS = '۰۱۲۳۴۵۶۷۸۹';
 const AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
 
-const toPersianDigits = (value: string) => value.replace(/\d/g, digit => FA_DIGITS[Number(digit)]);
+/** Display helper shared with the pages that show amounts/plates in Persian digits. */
+export const toPersianDigits = (value: string) => value.replace(/\d/g, digit => FA_DIGITS[Number(digit)]);
 
 const toLatinDigits = (value: string) =>
   value

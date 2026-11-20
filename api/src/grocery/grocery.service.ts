@@ -76,7 +76,9 @@ export class GroceryService {
   private async settings(queryable: { query: Pool['query'] }) {
     const result = await queryable.query(`SELECT key,value_int,value_text FROM platform_settings WHERE key = ANY($1::text[])`, [
       ['grocery_bid_minutes', 'grocery_payment_minutes', 'grocery_revenue_mode', 'grocery_fee_bps', 'grocery_goods_bps',
-        'grocery_fixed_rial', 'grocery_payment_mode', 'grocery_extend_minutes', 'grocery_max_extensions'],
+        'grocery_fixed_rial', 'grocery_payment_mode', 'grocery_extend_minutes', 'grocery_max_extensions',
+        'grocery_platform_card', 'grocery_platform_sheba', 'grocery_platform_holder', 'grocery_platform_bank',
+        'grocery_gateway_enabled'],
     ]) as { rows: Array<Setting & { key: string }> };
     const map = new Map(result.rows.map(row => [row.key, row]));
     const minutes = (key: string, fallback: number) => {
@@ -94,6 +96,11 @@ export class GroceryService {
       paymentMode: ((map.get('grocery_payment_mode')?.value_text ?? 'CARD_TO_CARD').toUpperCase() === 'GATEWAY' ? 'GATEWAY' : 'CARD_TO_CARD') as 'GATEWAY' | 'CARD_TO_CARD',
       extendMinutes: minutes('grocery_extend_minutes', 15),
       maxExtensions: Math.min(5, Math.max(0, Number(map.get('grocery_max_extensions')?.value_int ?? 2))),
+      platformCard: map.get('grocery_platform_card')?.value_text?.trim() || null,
+      platformSheba: map.get('grocery_platform_sheba')?.value_text?.trim() || null,
+      platformHolder: map.get('grocery_platform_holder')?.value_text?.trim() || null,
+      platformBank: map.get('grocery_platform_bank')?.value_text?.trim() || null,
+      gatewayEnabled: Number(map.get('grocery_gateway_enabled')?.value_int ?? 0) === 1,
     };
   }
 
@@ -212,6 +219,7 @@ export class GroceryService {
         .filter((bid: Record<string, unknown>) => bid.driverUserId === user.sub)
         .map(({ driverUserId: _ignored, ...bid }: Record<string, unknown>) => bid);
     const feeConfirmed = Boolean(row.feeConfirmedAt);
+    const destination = owner ? await this.paymentDestination() : null;
     return {
       ...this.shape(row), items: items.rows, bids: visibleBids,
       viewer: owner ? 'CUSTOMER' : courier ? 'DRIVER' : 'STAFF',
@@ -219,6 +227,7 @@ export class GroceryService {
       feeRequired: row.status !== 'OPEN' && row.status !== 'EXPIRED' && row.status !== 'CANCELLED',
       feeDue: Boolean(row.feeDeadlineAt) && !feeConfirmed && row.status === 'ASSIGNED',
       canStartShopping: row.status === 'ASSIGNED' && feeConfirmed,
+      paymentDestination: destination,
     };
   }
 
@@ -575,9 +584,12 @@ export class GroceryService {
   async declareFeePayment(user: Principal, id: string, body: { method?: unknown; receiptUrl?: unknown; reference?: unknown }) {
     const settings = await this.settings(this.pool);
     const method = body?.method === undefined ? 'CARD_TO_CARD' : String(body.method).toUpperCase();
-    if (method === 'ONLINE' || method === 'GATEWAY') throw new ConflictException('درگاه پرداخت هنوز وصل نشده است؛ فعلاً پرداخت کارت‌به‌کارت با رسید را انتخاب کنید.');
+    if (method === 'ONLINE' || method === 'GATEWAY') {
+      throw new ConflictException(settings.gatewayEnabled
+        ? 'درگاه پرداخت در حال راه‌اندازی است؛ فعلاً پرداخت کارت‌به‌کارت با رسید را انتخاب کنید.'
+        : 'درگاه پرداخت هنوز وصل نشده است؛ فعلاً پرداخت کارت‌به‌کارت با رسید را انتخاب کنید.');
+    }
     if (method !== 'CARD_TO_CARD') throw new BadRequestException('روش پرداخت کرایه معتبر نیست.');
-    if (settings.paymentMode === 'GATEWAY') throw new ConflictException('پرداخت کرایه در حالت درگاه انجام می‌شود؛ از صفحهٔ پرداخت آنلاین استفاده کنید.');
     const receipt = parseImageUrl(body?.receiptUrl, 'تصویر رسید کرایه');
     if (!receipt) throw new BadRequestException('تصویر رسید پرداخت کرایه الزامی است.');
     const reference = GroceryService.text(body?.reference, 'شمارهٔ پیگیری', 4, 80, false);
@@ -766,6 +778,30 @@ export class GroceryService {
     return { feeQueue: fees.rows, goodsQueue: goods.rows };
   }
 
+  /**
+   * Card-to-card is never switched off: the customer may prefer it, and it keeps the mission
+   * payable when the gateway is unavailable. The online route only depends on the gateway.
+   */
+  async paymentDestination(_actor?: Principal) {
+    const settings = await this.settings(this.pool);
+    return {
+      fee: {
+        cardToCard: {
+          enabled: Boolean(settings.platformCard),
+          card: settings.platformCard,
+          sheba: settings.platformSheba,
+          holder: settings.platformHolder,
+          bank: settings.platformBank,
+          note: settings.platformCard ? null : 'شمارهٔ کارت هنوز توسط پشتیبانی تنظیم نشده است.',
+        },
+        online: {
+          enabled: settings.gatewayEnabled,
+          note: settings.gatewayEnabled ? 'درگاه پرداخت در حال راه‌اندازی است.' : 'درگاه پرداخت هنوز وصل نشده است.',
+        },
+      },
+    };
+  }
+
   async adminSettings(actor: Principal) {
     if (!isStaff(actor)) throw new ForbiddenException('تنظیمات سوپرمارکت فقط برای کارکنان است.');
     const settings = await this.settings(this.pool);
@@ -775,10 +811,19 @@ export class GroceryService {
       currency: 'IRR',
       revenueModes: ['NONE', 'FEE_PERCENT', 'GOODS_PERCENT', 'FIXED'],
       paymentModes: ['CARD_TO_CARD', 'GATEWAY'],
+      platformCard: settings.platformCard,
+      platformSheba: settings.platformSheba,
+      platformHolder: settings.platformHolder,
+      platformBank: settings.platformBank,
+      gatewayEnabled: settings.gatewayEnabled,
     };
   }
 
-  async updateAdminSettings(actor: Principal, body: { revenueMode?: unknown; feeBps?: unknown; goodsBps?: unknown; fixedRial?: unknown; bidMinutes?: unknown; paymentMinutes?: unknown; extendMinutes?: unknown; maxExtensions?: unknown; paymentMode?: unknown }) {
+  async updateAdminSettings(actor: Principal, body: {
+    revenueMode?: unknown; feeBps?: unknown; goodsBps?: unknown; fixedRial?: unknown; bidMinutes?: unknown;
+    paymentMinutes?: unknown; extendMinutes?: unknown; maxExtensions?: unknown; paymentMode?: unknown;
+    platformCard?: unknown; platformSheba?: unknown; platformHolder?: unknown; platformBank?: unknown; gatewayEnabled?: unknown;
+  }) {
     if (!isStaff(actor)) throw new ForbiddenException('تنظیمات سوپرمارکت فقط برای کارکنان است.');
     const updates: Array<{ key: string; int: number; text: string | null }> = [];
     const bps = (value: unknown, label: string) => {
@@ -807,6 +852,27 @@ export class GroceryService {
     if (body?.bidMinutes !== undefined) updates.push({ key: 'grocery_bid_minutes', int: minutes(body.bidMinutes, 'مهلت پیشنهاد'), text: null });
     if (body?.paymentMinutes !== undefined) updates.push({ key: 'grocery_payment_minutes', int: minutes(body.paymentMinutes, 'مهلت پرداخت'), text: null });
     if (body?.extendMinutes !== undefined) updates.push({ key: 'grocery_extend_minutes', int: minutes(body.extendMinutes, 'مدت تمدید'), text: null });
+    if (body?.platformCard !== undefined) {
+      const raw = String(body.platformCard ?? '').trim();
+      const card = raw ? digits(raw) : '';
+      if (card && !CARD_PATTERN.test(card)) throw new BadRequestException('شمارهٔ کارت باید ۱۶ رقم باشد.');
+      updates.push({ key: 'grocery_platform_card', int: 0, text: card || null });
+    }
+    if (body?.platformSheba !== undefined) {
+      const sheba = String(body.platformSheba ?? '').replace(/\s/g, '').toUpperCase();
+      if (sheba && !/^IR\d{24}$/.test(sheba)) throw new BadRequestException('شبا باید با IR شروع شود و ۲۴ رقم داشته باشد.');
+      updates.push({ key: 'grocery_platform_sheba', int: 0, text: sheba || null });
+    }
+    if (body?.platformHolder !== undefined) {
+      updates.push({ key: 'grocery_platform_holder', int: 0, text: GroceryService.text(body.platformHolder, 'نام صاحب حساب', 3, 120, false) });
+    }
+    if (body?.platformBank !== undefined) {
+      updates.push({ key: 'grocery_platform_bank', int: 0, text: GroceryService.text(body.platformBank, 'نام بانک', 2, 80, false) });
+    }
+    if (body?.gatewayEnabled !== undefined) {
+      if (typeof body.gatewayEnabled !== 'boolean') throw new BadRequestException('وضعیت درگاه باید بله یا خیر باشد.');
+      updates.push({ key: 'grocery_gateway_enabled', int: body.gatewayEnabled ? 1 : 0, text: null });
+    }
     if (body?.maxExtensions !== undefined) {
       const parsed = Number(digits(body.maxExtensions));
       if (!Number.isInteger(parsed) || parsed < 0 || parsed > 5) throw new BadRequestException('سقف تمدید باید بین ۰ تا ۵ باشد.');

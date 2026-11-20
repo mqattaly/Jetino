@@ -360,6 +360,59 @@ describe('GroceryService · text shopping list', () => {
     await assert.rejects(service.updateAdminSettings(staff, {}), BadRequestException);
   });
 
+
+  it('publishes the admin-configured card and sheba for card-to-card payments', async () => {
+    const { pool } = fakePool([
+      (sql) => sql.startsWith('SELECT key,value_int,value_text') ? {
+        rows: [
+          { key: 'grocery_bid_minutes', value_int: '15', value_text: null },
+          { key: 'grocery_payment_minutes', value_int: '15', value_text: null },
+          { key: 'grocery_revenue_mode', value_int: '0', value_text: 'NONE' },
+          { key: 'grocery_fee_bps', value_int: '1000', value_text: null },
+          { key: 'grocery_goods_bps', value_int: '0', value_text: null },
+          { key: 'grocery_fixed_rial', value_int: '0', value_text: null },
+          { key: 'grocery_payment_mode', value_int: '0', value_text: 'CARD_TO_CARD' },
+          { key: 'grocery_extend_minutes', value_int: '15', value_text: null },
+          { key: 'grocery_max_extensions', value_int: '2', value_text: null },
+          { key: 'grocery_platform_card', value_int: '0', value_text: '6037000000000000' },
+          { key: 'grocery_platform_sheba', value_int: '0', value_text: 'IR000000000000000000000000' },
+          { key: 'grocery_platform_holder', value_int: '0', value_text: 'شرکت جتینو' },
+          { key: 'grocery_platform_bank', value_int: '0', value_text: 'ملی' },
+          { key: 'grocery_gateway_enabled', value_int: '0', value_text: null },
+        ],
+        rowCount: 14,
+      } : undefined,
+    ]);
+    const service = new GroceryService(pool, undefined as never);
+    const destination = await service.paymentDestination();
+    assert.equal(destination.fee.cardToCard.enabled, true);
+    assert.equal(destination.fee.cardToCard.card, '6037000000000000');
+    assert.equal(destination.fee.cardToCard.sheba, 'IR000000000000000000000000');
+    assert.equal(destination.fee.online.enabled, false);
+  });
+
+  it('keeps card-to-card available even after a gateway is switched on', async () => {
+    const { pool } = fakePool([
+      (sql) => sql.startsWith('SELECT key,value_int,value_text') ? settingsRows({ mode: 'CARD_TO_CARD' }) : undefined,
+      (sql) => sql.startsWith('SELECT g.id,g.customer_id,g.status') ? {
+        rows: [{ customer_id: customer.sub, status: 'ASSIGNED', fee_rial: '150000', fee_confirmed_at: null, driver_user: 'driver-user' }], rowCount: 1,
+      } : undefined,
+      (sql) => sql.startsWith('SELECT DISTINCT ur.user_id') ? { rows: [], rowCount: 0 } : undefined,
+      (sql) => sql.startsWith('SELECT g.id,g.customer_id AS "customerId"') ? { rows: [{ id: listId, customerId: customer.sub, status: 'ASSIGNED', driverUserId: 'driver-user' }], rowCount: 1 } : undefined,
+      (sql) => sql.startsWith('SELECT name,quantity') || sql.startsWith('SELECT b.id,b.amount_rial') ? { rows: [], rowCount: 0 } : undefined,
+    ]);
+    const service = new GroceryService(pool, undefined as never);
+    await service.declareFeePayment(customer, listId, { method: 'CARD_TO_CARD', receiptUrl: 'https://example.com/r.jpg' });
+  });
+
+  it('validates the admin card, sheba and gateway switch', async () => {
+    const service = new GroceryService({ connect: () => { throw new Error('unexpected connection'); } } as never, undefined as never);
+    const staff = { sub: 'staff-1', roles: ['SUPER_ADMIN'] };
+    await assert.rejects(service.updateAdminSettings(staff, { platformCard: '1234' }), BadRequestException);
+    await assert.rejects(service.updateAdminSettings(staff, { platformSheba: 'IR123' }), BadRequestException);
+    await assert.rejects(service.updateAdminSettings(staff, { gatewayEnabled: 'yes' }), BadRequestException);
+  });
+
   it('shows every bid to the customer but only their own to a courier', async () => {
     const bids = [
       { id: 'b1', amountRial: '100000', status: 'ACCEPTED', driverUserId: 'driver-user' },

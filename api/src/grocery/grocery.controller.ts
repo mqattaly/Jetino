@@ -55,5 +55,6 @@ export class GroceryController {
   @Post('lists/:id/deadline/extend') extend(@Req() req: AuthRequest, @Param('id') id: string, @Body() body: { kind?: unknown }) {
     return this.grocery.extendDeadline(req.user, id, body?.kind);
   }
+  @Get('payment-destination') destination(@Req() req: AuthRequest) { return this.grocery.paymentDestination(req.user); }
   @Get('board') board(@Req() req: AuthRequest) { return this.grocery.courierBoard(req.user); }
 }
