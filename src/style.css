@@ -168,7 +168,7 @@
 .driver-profile{display:grid;gap:12px}
 .driver-profile.incomplete{border-color:#f0d5c8;box-shadow:0 8px 30px rgba(170,90,60,.08)}
 .driver-profile-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
-.driver-profile-head h2{display:flex;align-items:center;gap:7px;font-size:1rem;margin:0;color:#2f4636}
+.driver-profile-head h2{display:flex;align-items:center;gap:7px;font-size:1rem;margin:0;color:var(--ink)}
 .driver-profile-head p{font-size:9px;color:#7c857a;line-height:1.9;margin:5px 0 0}
 .driver-profile-body{display:grid;gap:10px;justify-items:start}
 .driver-profile-card{display:flex;align-items:center;gap:12px}
