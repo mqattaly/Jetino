@@ -1,4 +1,5 @@
 import type { ComponentType, ReactNode } from 'react';
+import { ArrowRight } from 'lucide-react';
 import type { LucideProps } from 'lucide-react';
 
 type Icon = ComponentType<LucideProps>;
@@ -45,5 +46,23 @@ export function StatTile({ label, value, hint, tone = 'brand' }: { label: string
     <span className="stat-tile-label">{label}</span>
     <strong>{value}</strong>
     {hint && <small>{hint}</small>}
+  </div>;
+}
+
+/**
+ * The large «back» control of every inner page. It uses the browser history when
+ * there is something to return to and falls back to the storefront otherwise.
+ */
+export function BackButton({ label = 'بازگشت', fallback = '/' }: { label?: string; fallback?: string }) {
+  const go = () => {
+    const cameFromApp = document.referrer.startsWith(window.location.origin);
+    if (window.history.length > 1 && cameFromApp) window.history.back();
+    else window.location.assign(fallback);
+  };
+  return <div className="back-bar">
+    <button type="button" className="back-button" onClick={go}>
+      <ArrowRight size={21} />
+      <span>{label}</span>
+    </button>
   </div>;
 }

@@ -762,3 +762,23 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--brand-bright);
 }
 .plate-input-legacy { font-size: 10.5px; color: var(--muted); line-height: 1.9; }
 .plate-input-legacy b { color: var(--ink-2); letter-spacing: .06em; }
+
+/* ۲۲) کلید برگشت بزرگ */
+.back-bar { display: flex; margin: 0 0 16px; }
+.back-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px; direction: rtl;
+  min-height: 52px; padding: 0 24px; border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--brand) 30%, var(--line));
+  background: color-mix(in srgb, var(--brand) 10%, var(--surface-2));
+  color: var(--ink); font-family: inherit; font-size: 15.5px; font-weight: 750;
+  cursor: pointer; box-shadow: var(--shadow-sm);
+  transition: transform var(--t-fast) var(--ease), background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.back-button svg { color: var(--brand-bright); transition: transform var(--t-fast) var(--ease); }
+.back-button:hover { transform: translateY(-2px); background: color-mix(in srgb, var(--brand) 18%, var(--surface-2)); border-color: color-mix(in srgb, var(--brand) 55%, transparent); }
+.back-button:hover svg { transform: translateX(3px); }
+.back-button:active { transform: translateY(0); }
+.back-button:focus-visible { outline: 2px solid var(--brand-bright); outline-offset: 3px; }
+@media (max-width: 720px) {
+  .back-button { width: 100%; min-height: 52px; font-size: 15.5px; }
+}

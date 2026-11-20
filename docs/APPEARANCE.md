@@ -43,6 +43,7 @@
 |---|---|
 | `src/ui/theme.tsx` | `ThemeProvider`, `useTheme` |
 | `src/ui/controls.tsx` | `ActionButton` (آیکون + نوشته، سه حالت)، `TileButton`، `StatTile` |
+| `src/ui/controls.tsx` · `BackButton` | کلید برگشت بزرگ (آیکون + نوشته) در ابتدای همهٔ صفحه‌های داخلی |
 | `src/ui/plate.tsx` | ورود پلاک چهاربخشی: دو رقم زیر ایران، سه رقم، حرف، دو رقم |
 | `public/images/hero-night.jpg` | تصویر هیرو (تولیدشده در همین مخزن؛ هیچ CDN بیرونی) |
 
@@ -73,6 +74,7 @@
 - `docs/screenshots/storefront-mobile.jpg` — فروشگاه روی موبایل
 - `docs/screenshots/driver-login-dark.jpg` — ورود پیک با افق شبانه
 - `docs/screenshots/driver-profile-plate.jpg` — پلاک چهاربخشی در «مشخصات شناسایی من»
+- `docs/screenshots/inner-page-back.jpg` — کلید برگشت بزرگ در صفحهٔ سفارش‌ها (موبایل)
 
 ## ۶) نکتهٔ نگهداری
 
