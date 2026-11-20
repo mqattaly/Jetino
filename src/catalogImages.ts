@@ -16,7 +16,7 @@ const PHOTOS = {
   dessert: { src: '/images/cat-dessert.jpg', alt: 'شربت تازه، لیمو نعنا و بستنی سنتی' },
 } satisfies Record<string, CatalogPhoto>;
 
-export const HERO_IMAGE: CatalogPhoto = { src: '/images/hero-kebab.jpg', alt: 'بشقاب چلوکباب روی سفرهٔ سبز' };
+export const HERO_IMAGE: CatalogPhoto = { src: '/images/hero-night.jpg', alt: 'شب بندر خمیر؛ پیک با جعبهٔ غذای زرشکی و ماه کامل روی خلیج' };
 
 /** Ordered so the most specific southern keywords win over the generic ones. */
 const KEYWORDS: [RegExp, keyof typeof PHOTOS][] = [

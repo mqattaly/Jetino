@@ -1,2 +1,22 @@
 <!doctype html>
-<html lang="fa" dir="rtl"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><meta name="theme-color" content="#f8f7f4"/><meta name="description" content="جتینو؛ سفارش غذای محلی در بندر خمیر"/><link rel="manifest" href="/manifest.webmanifest"/><link rel="icon" type="image/svg+xml" href="/icons/jetino.svg"/><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"/><link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png"/><title>جتینو | سفارش غذای محلی</title></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>
+<html lang="fa" dir="rtl"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><meta name="theme-color" content="#0a1420"/><meta name="description" content="جتینو؛ سفارش غذای محلی در بندر خمیر"/><link rel="manifest" href="/manifest.webmanifest"/><link rel="icon" type="image/svg+xml" href="/icons/jetino.svg"/><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"/><link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png"/><title>جتینو | سفارش غذای محلی</title><script>
+  // Resolve the saved appearance before the first paint so a reload never flashes the wrong palette.
+  (function () {
+    try {
+      var mode = localStorage.getItem('jetino.theme.v2') || 'auto';
+      var accent = localStorage.getItem('jetino.accent.v2') || 'crimson';
+      var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var resolved = mode === 'auto' ? (dark ? 'dark' : 'light') : mode;
+      var root = document.documentElement;
+      root.dataset.theme = resolved;
+      root.dataset.themeMode = mode;
+      root.dataset.accent = accent;
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', resolved === 'dark' ? '#0a1420' : '#f2f6fb');
+    } catch (error) {
+      document.documentElement.dataset.theme = 'light';
+      document.documentElement.dataset.accent = 'crimson';
+    }
+  })();
+</script>
+</head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>
