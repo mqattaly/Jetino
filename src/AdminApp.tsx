@@ -9,6 +9,7 @@ import AdminAuditLog from './AdminAuditLog';
 import { AdminFeedbackBoard, SupportPanel } from './FeedbackSupport';
 import { CancellationBoard } from './Cancellations';
 import { NotificationDeliveryBoard } from './NotificationDelivery';
+import { adminApiMethod } from './adminApiMethod';
 import { otpRequestNotice } from './testOtpNotice';
 
 type Settings = { region: string; regionSlug: string; deliveryFeeRial: string | null; defaultCommissionBps: number; currency: string };
@@ -18,7 +19,7 @@ const toAsciiDigits = (value: string) => value.replace(/[۰-۹]/g, digit => Stri
 const persianNumber=(value:string|number)=>new Intl.NumberFormat('fa-IR').format(Number(value));
 const moneyRial=(value:string)=>new Intl.NumberFormat('fa-IR').format(BigInt(value))+' ریال';
 async function api<T>(path: string, body?: unknown, token?: string): Promise<T> {
-  const response = await fetch(path, { method: body === undefined ? 'GET' : 'PATCH', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  const response = await fetch(path, { method: adminApiMethod(path, body !== undefined), headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   const result = await response.json().catch(() => ({})) as T & ApiError;
   if (!response.ok) throw new Error(typeof result.message === 'string' ? result.message : `خطا در ارتباط با سرور (${response.status})`);
   return result;

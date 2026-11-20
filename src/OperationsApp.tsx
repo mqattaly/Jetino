@@ -22,7 +22,7 @@ function OpsHeader({title,subtitle,onLogout}:{title:string;subtitle:string;onLog
 
 export function BusinessOrdersApp(){
  const [token,setToken]=useState(()=>sessionStorage.getItem('jetino_customer_token')||'');const [preparationMinutes,setPreparationMinutes]=useState('30');const [orders,setOrders]=useState<OrderRow[]>([]);const [loading,setLoading]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('');const [details,setDetails]=useState<OrderDetails|null>(null);
- useEffect(()=>{document.title='سفارش‌های کسب‌وکار | جتینو';},[]);
+ useEffect(()=>{document.title='سفارش‌های کسب‌وکار | جتینو';if(token)void load(token);},[]);
  const load=async(auth=token)=>{setLoading(true);setError('');try{setOrders(await api<OrderRow[]>('/api/v1/orders/business/mine',auth));const orderId=new URLSearchParams(window.location.search).get('orderId');if(orderId)setDetails(await api<OrderDetails>(`/api/v1/orders/${encodeURIComponent(orderId)}`,auth));}catch(e){setError((e as Error).message);}finally{setLoading(false);}};
  const login=(auth:string,roles:string[])=>{if(!roles.includes('BUSINESS_OWNER')&&!roles.includes('SUPER_ADMIN')){setError('این حساب به پنل کسب‌وکار دسترسی ندارد.');return;}sessionStorage.setItem('jetino_customer_token',auth);setToken(auth);void load(auth);};
  const change=async(id:string,status:string)=>{setError('');setNotice('');try{await api(`/api/v1/orders/${id}/status`,token,'PATCH',{status,...(status==='CONFIRMED'?{preparationMinutes:Number(preparationMinutes)}:{})});setNotice('وضعیت سفارش به‌روزرسانی شد.');await load();if(details?.id===id)setDetails(await api<OrderDetails>(`/api/v1/orders/${id}`,token));}catch(e){setError((e as Error).message);}};
@@ -44,7 +44,7 @@ function CustomerWalletPanel({token,revision}:{token:string;revision:number}){
 export function CustomerOrdersApp(){
  const [walletRevision,setWalletRevision]=useState(0);
  const [token,setToken]=useState(()=>sessionStorage.getItem('jetino_customer_token')||'');const [orders,setOrders]=useState<OrderRow[]>([]);const [loading,setLoading]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('');const [details,setDetails]=useState<OrderDetails|null>(null);const [rate,setRate]=useState<string|null>(null);
- useEffect(()=>{document.title='پیگیری سفارش | جتینو';},[]);
+ useEffect(()=>{document.title='پیگیری سفارش | جتینو';if(token)void load(token);},[]);
  const load=async(auth=token)=>{setWalletRevision(v=>v+1);setLoading(true);setError('');try{setOrders(await api<OrderRow[]>('/api/v1/orders/mine',auth));const orderId=new URLSearchParams(window.location.search).get('orderId');if(orderId)setDetails(await api<OrderDetails>(`/api/v1/orders/${encodeURIComponent(orderId)}`,auth));}catch(e){setError((e as Error).message);}finally{setLoading(false);}};
  const login=(auth:string)=>{sessionStorage.setItem('jetino_customer_token',auth);setToken(auth);void load(auth);};
  const logout=()=>{sessionStorage.removeItem('jetino_customer_token');setToken('');setOrders([]);setDetails(null);};
