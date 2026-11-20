@@ -1,12 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Check, Moon, MonitorSmartphone, Palette, RotateCcw, Sun } from 'lucide-react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 /**
- * Theme + accent are two independent choices, exactly like the reference swatches:
- * light / dark / auto, and one primary colour out of five. Both are written to the
- * <html> element, so a single attribute change re-paints every screen without any
- * component knowing about it. `index.html` repeats the same read before first paint,
- * which is why a reload never flashes the wrong palette.
+ * The palette is not a customer-facing control: it follows the operating system
+ * (`auto`) and remembers the last choice for staff devices. Both values are written
+ * to the <html> element, so a single attribute change re-paints every screen without
+ * any component knowing about it. `index.html` repeats the same read before the first
+ * paint, which is why a reload never flashes the wrong palette.
  */
 
 export type ThemeMode = 'light' | 'dark' | 'auto';
@@ -116,83 +115,4 @@ export function useTheme(): ThemeContextValue {
   const context = useContext(ThemeContext);
   if (!context) throw new Error('useTheme must be used inside ThemeProvider');
   return context;
-}
-
-const modes: Array<{ key: ThemeMode; label: string; icon: typeof Sun }> = [
-  { key: 'light', label: 'روشن', icon: Sun },
-  { key: 'dark', label: 'تیره', icon: Moon },
-  { key: 'auto', label: 'خودکار', icon: MonitorSmartphone },
-];
-
-const accents: ThemeAccent[] = ['crimson', 'cyan', 'teal', 'orange', 'magenta'];
-
-/** The theme cards + colour row from the reference image, built from gradients and masks. */
-export function ThemePicker({ compact = false }: { compact?: boolean }) {
-  const { mode, accent, setMode, setAccent, reset } = useTheme();
-  return <div className={compact ? 'theme-picker compact' : 'theme-picker'}>
-    <p>روشنایی و رنگ اصلی را انتخاب کنید؛ انتخاب شما روی همین دستگاه ذخیره می‌شود.</p>
-    <div className="theme-grid" role="radiogroup" aria-label="تم ظاهری">
-      {modes.map(({ key, label }) => <button
-        key={key}
-        type="button"
-        role="radio"
-        aria-checked={mode === key}
-        className="theme-card"
-        onClick={() => setMode(key)}
-      >
-        <span className={`scene ${key}`} aria-hidden="true" />
-        <span>{label}</span>
-      </button>)}
-    </div>
-    <h3>رنگ اصلی</h3>
-    <div className="theme-swatches" role="radiogroup" aria-label="رنگ اصلی">
-      {accents.map(name => <button
-        key={name}
-        type="button"
-        role="radio"
-        aria-checked={accent === name}
-        aria-label={accentNames[name]}
-        title={accentNames[name]}
-        className={`swatch ${name}`}
-        onClick={() => setAccent(name)}
-      >
-        {accent === name && <Check size={18} strokeWidth={3} />}
-      </button>)}
-    </div>
-    <button type="button" className="theme-reset" onClick={reset}><RotateCcw size={13} />بازگشت به پیش‌فرض (تیرهٔ خودکار، زرشکی)</button>
-  </div>;
-}
-
-/**
- * A single floating control that every screen gets for free, because it is mounted in
- * `main.tsx` next to the routed app. On phones it sits above the bottom tab bar.
- */
-export function ThemeDock() {
-  const [open, setOpen] = useState(false);
-  const dock = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointer = (event: MouseEvent | TouchEvent) => {
-      if (dock.current && !dock.current.contains(event.target as Node)) setOpen(false);
-    };
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
-    document.addEventListener('mousedown', onPointer);
-    document.addEventListener('touchstart', onPointer);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onPointer);
-      document.removeEventListener('touchstart', onPointer);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
-  return <div className="theme-dock" ref={dock}>
-    {open && <div className="theme-panel" role="dialog" aria-label="تنظیم ظاهر">
-      <ThemePicker />
-    </div>}
-    <button type="button" className="theme-fab" aria-expanded={open} onClick={() => setOpen(value => !value)}>
-      <Palette size={17} />ظاهر
-    </button>
-  </div>;
 }

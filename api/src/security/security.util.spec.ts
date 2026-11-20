@@ -53,8 +53,14 @@ describe('Iranian plate normalisation', () => {
     assert.equal(normalizePlate('12ب345-67'), '12ب34567');
   });
 
+  it('accepts the four-part national plate', () => {
+    assert.equal(normalizePlate('94 346 ط 23'), '94346ط23');
+    assert.equal(normalizePlate('۹۴۳۴۶ط۲۳'), '94346ط23');
+    assert.equal(normalizePlate('94-346-ط-23'), '94346ط23');
+  });
+
   it('refuses a plate that cannot identify a courier', () => {
-    for (const value of ['', '12x34567', '12345678', 'ب1234567', null, 12]) {
+    for (const value of ['', '12x34567', '12345678', 'ب1234567', '94346x23', '9434ط23', null, 12]) {
       assert.throws(() => normalizePlate(value), BadRequestException, `${String(value)} must be rejected`);
     }
   });

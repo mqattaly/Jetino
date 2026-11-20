@@ -4,6 +4,7 @@ import { BusinessFeedbackPanel, OrderFeedbackPanel, SupportPanel } from './Feedb
 import { LiveTracking, SafetyPanel } from './Safety';
 import { OrderCancellationPanel } from './Cancellations';
 import { otpRequestNotice } from './testOtpNotice';
+import { prettyPlate } from './ui/plate';
 
 type DriverInfo={name:string|null;plate:string|null;vehicleType:string|null;photoUrl:string|null};
 type OrderRow={id:string;businessId?:string;status:string;paymentMethod:string;paymentStatus:string;totalRial:string;estimatedPrepMinutes?:number|null;createdAt:string;deliveryAddress?:string;customerPhone?:string;driverName?:string|null;driverPlate?:string|null;driverPhotoUrl?:string|null;driverVehicleType?:string|null};
@@ -26,7 +27,7 @@ export function DriverBadge({driver,compact=false}:{driver:DriverInfo|null;compa
  if(!driver||(!driver.name&&!driver.plate&&!driver.photoUrl))return null;
  return <div className={`driver-badge${compact?' compact':''}`}>
   {driver.photoUrl?<img className="driver-avatar" src={driver.photoUrl} alt={driver.name?`تصویر ${driver.name}`:'تصویر پیک'} loading="lazy"/>:<span className="driver-avatar empty" aria-hidden="true"><Bike size={20}/></span>}
-  <div><b>{driver.name||'پیک جتینو'}</b><small>{vehicleLabel(driver.vehicleType)}{driver.plate?<> · پلاک <span className="plate-number" dir="ltr">{driver.plate}</span></>:null}</small></div>
+  <div><b>{driver.name||'پیک جتینو'}</b><small>{vehicleLabel(driver.vehicleType)}{driver.plate?<> · پلاک <span className="plate-number" dir="ltr">{prettyPlate(driver.plate)}</span></>:null}</small></div>
  </div>;
 }
 /** The customer reads this code at the door; the courier types it to close the delivery. */

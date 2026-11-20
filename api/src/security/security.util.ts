@@ -59,11 +59,13 @@ export function parseImageUrl(value: unknown, label = 'تصویر'): string | nu
 const FA_DIGITS = '۰۱۲۳۴۵۶۷۸۹';
 const AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
 const FA_PLATE_LETTERS = 'بپتثجچحخدذرزژسشصضطظعغفقکگلمنوهی';
-const PLATE_PATTERN = new RegExp(`^\\d{2}[${FA_PLATE_LETTERS}]\\d{5}$`);
+const PLATE_PATTERN = new RegExp(`^\\d{2}(?:\\d{3}[${FA_PLATE_LETTERS}]\\d{2}|[${FA_PLATE_LETTERS}]\\d{5})$`);
 
 /**
- * Normalises an Iranian plate to `12ب34567` form: English digits, one Persian letter and no
- * separators. A Latin letter is not accepted — a plate has to be readable at the door exactly
+ * Normalises an Iranian plate to a compact form with English digits, one Persian letter and no
+ * separators. Both layouts are accepted: the current national plate (`94346ط23` — two province
+ * digits, three digits, the letter, two digits) and the older `12ب34567` plates that are still
+ * on the road. A Latin letter is not accepted — a plate has to be readable at the door exactly
  * as it is written on the vehicle.
  */
 export function normalizePlate(value: unknown): string {
@@ -76,7 +78,7 @@ export function normalizePlate(value: unknown): string {
     .replace(/ك/g, 'ک')
     .replace(/[\s\-_]/g, '')
     .toUpperCase();
-  if (!PLATE_PATTERN.test(normalized)) throw new BadRequestException('پلاک باید به فرمت ایران باشد؛ مثلاً 12ب34567.');
+  if (!PLATE_PATTERN.test(normalized)) throw new BadRequestException('پلاک باید به فرمت ایران باشد؛ مثلاً 94 346ط23.');
   return normalized;
 }
 

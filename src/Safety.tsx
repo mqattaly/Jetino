@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, BadgeCheck, Bike, Clock3, ExternalLink, ImageUp, Navigation, Radio, ShieldAlert, ShieldCheck, ShieldX, Siren, UserCheck } from 'lucide-react';
 import { PhotoField } from './PhotoField';
+import { prettyPlate } from './ui/plate';
 
 type ApiError = { message?: string };
 const fa = (value: number) => new Intl.NumberFormat('fa-IR').format(value);
@@ -66,7 +67,7 @@ export function LiveTracking({ token, orderId, active, compact = false }: { toke
           : <span className="driver-avatar empty" aria-hidden="true"><Bike size={20} /></span>}
         <div>
           <b>{driver.name || 'پیک جتینو'} {driver.verified && <BadgeCheck size={14} className="verified-icon" aria-label="مدارک تأییدشده" />}</b>
-          <small>{vehicleLabel[driver.vehicleType ?? ''] ?? 'وسیلهٔ نامشخص'}{driver.plateNumber ? <> · پلاک <span className="plate-number" dir="ltr">{driver.plateNumber}</span></> : null}</small>
+          <small>{vehicleLabel[driver.vehicleType ?? ''] ?? 'وسیلهٔ نامشخص'}{driver.plateNumber ? <> · پلاک <span className="plate-number" dir="ltr">{prettyPlate(driver.plateNumber)}</span></> : null}</small>
         </div>
       </div> : null}
       {data.location ? <div className="live-tracking-body">
@@ -279,7 +280,7 @@ export function AdminDriverVerification({ token }: { token: string }) {
         </figure>)}
       </div>
       <div className="verification-meta">
-        <b>{row.fullName || 'بدون نام'} {row.plateNumber ? <span className="plate-number" dir="ltr">{row.plateNumber}</span> : null}</b>
+        <b>{row.fullName || 'بدون نام'} {row.plateNumber ? <span className="plate-number" dir="ltr">{prettyPlate(row.plateNumber)}</span> : null}</b>
         <small dir="ltr">{row.phone}</small>
         <small>{row.regionName} · ارسال {clock(row.submittedAt)}</small>
         {status === 'PENDING' ? <>
