@@ -1,4 +1,4 @@
-import { Inject, Injectable, BadRequestException, ConflictException, NotFoundException, ServiceUnavailableException, ForbiddenException } from '@nestjs/common';
+import { Inject, Injectable, Optional, BadRequestException, ConflictException, NotFoundException, ServiceUnavailableException, ForbiddenException } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
 import { Pool, PoolClient } from 'pg';
 import { PG_POOL } from '../database/database.module';
@@ -6,6 +6,7 @@ import { decryptDeliveryCode, encryptDeliveryCode, generateDeliveryCode, hashDel
 import { notify } from '../notifications/notifications.util';
 import { decide, readPolicy, rejectionMessage } from '../cancellations/cancellation-policy';
 import { cancelOrder, staffIds, writeAudit } from '../cancellations/cancellation-writes';
+import { RateLimitService } from '../security/rate-limit.service';
 
 type Principal = { sub: string };
 type QuoteItem = { productId: string; quantity: number };
@@ -20,7 +21,7 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}
 
 @Injectable()
 export class OrdersService {
-  constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
+  constructor(@Inject(PG_POOL) private readonly pool: Pool, @Optional() @Inject(RateLimitService) private readonly rateLimit?: RateLimitService) {}
 
   private parse(user: Principal, body: { businessId?: unknown; addressId?: unknown; items?: unknown }) {
     const { businessId, addressId, items } = body ?? {};
@@ -102,6 +103,8 @@ export class OrdersService {
     const input = this.parse(user,body);
     if (body.paymentMethod !== undefined && body.paymentMethod !== 'CASH') throw new BadRequestException('در حال حاضر فقط پرداخت نقدی هنگام تحویل فعال است.');
     if (!idempotencyKey || idempotencyKey.length > 120 || !/^[A-Za-z0-9:_-]+$/.test(idempotencyKey)) throw new BadRequestException('هدر Idempotency-Key معتبر و یکتا الزامی است.');
+    // A person orders a handful of times a day; a script creates hundreds.
+    if (this.rateLimit) await this.rateLimit.enforce(`orders.create:${user.sub}`, 30, 600, 'ثبت سفارش بیش از حد مجاز است.');
     const stableItems = [...input.items].sort((a,b)=>a.productId.localeCompare(b.productId));
     const requestHash = createHash('sha256').update(JSON.stringify({businessId:input.businessId,addressId:input.addressId,items:stableItems,paymentMethod:'CASH'})).digest('hex');
     const client = await this.pool.connect();

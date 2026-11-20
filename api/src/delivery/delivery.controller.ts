@@ -10,6 +10,11 @@ type DeliveryRequest = Request & { user: { sub: string; roles: string[] } };
 export class DeliveryController {
   constructor(@Inject(DeliveryService) private readonly delivery: DeliveryService) {}
 
+  @Get('orders/:orderId/tracking')
+  tracking(@Req() request: DeliveryRequest, @Param('orderId') orderId: string) {
+    return this.delivery.trackingForOrder(request.user, orderId);
+  }
+
   @Get('orders/:orderId/estimate')
   estimate(@Req() request: DeliveryRequest, @Param('orderId') orderId: string) {
     return this.delivery.estimateForOrder(request.user, orderId);

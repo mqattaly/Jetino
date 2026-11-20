@@ -16,7 +16,7 @@ export class AdminSettingsController {
   get() { return this.settings.get(); }
 
   @Patch()
-  update(@Req() request: AdminRequest, @Body() body: { deliveryFeeRial?: unknown; defaultCommissionBps?: unknown }) {
+  update(@Req() request: AdminRequest, @Body() body: { deliveryFeeRial?: unknown; defaultCommissionBps?: unknown; requireDriverVerification?: unknown }) {
     return this.settings.update(request.user, body);
   }
 }

@@ -1,13 +1,19 @@
-import { Inject, Injectable, ServiceUnavailableException, HttpException, HttpStatus, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Inject, Injectable, Optional, ServiceUnavailableException, HttpException, HttpStatus, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import { Pool } from 'pg';
 import { PG_POOL } from '../database/database.module';
+import { RateLimitService } from '../security/rate-limit.service';
 
 @Injectable()
 export class AuthService {
   private readonly jwt = new JwtService();
-  constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
+  constructor(@Inject(PG_POOL) private readonly pool: Pool, @Optional() @Inject(RateLimitService) private readonly rateLimit?: RateLimitService) {}
+
+  /** Optional so the unit specs can build the service without a counter table; production always injects it. */
+  private async brake(key: string, limit: number, windowSeconds: number, message: string) {
+    if (this.rateLimit) await this.rateLimit.enforce(key, limit, windowSeconds, message);
+  }
 
   private normalizePhone(input: unknown): string {
     if (typeof input !== 'string') throw new BadRequestException('شماره موبایل معتبر نیست.');
@@ -31,6 +37,9 @@ export class AuthService {
     // explicitly opens that door: the flag is the whole switch, and removing it closes the flow again
     const echoCode = process.env.JETINO_ALLOW_TEST_OTP === 'yes';
     if ((!apiKey || !template) && !echoCode) throw new ServiceUnavailableException('ارسال پیامک هنوز پیکربندی نشده است.');
+    // Cross-instance backstop above the per-phone challenge count: a caller cannot
+    // fan requests out over warm lambdas to multiply the three-challenge window.
+    await this.brake(`auth.otp.request:${phone}`, 6, 900, 'درخواست کد ورود بیش از حد مجاز است.');
     const recent = await this.pool.query(
       `SELECT count(*)::int AS count FROM otp_challenges WHERE phone=$1 AND created_at > now() - interval '15 minutes'`, [phone],
     );
@@ -72,6 +81,8 @@ export class AuthService {
     if (typeof codeInput !== 'string' || !/^\d{6}$/.test(codeInput)) throw new BadRequestException('کد ورود معتبر نیست.');
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret || jwtSecret.length < 32) throw new ServiceUnavailableException('ورود هنوز پیکربندی نشده است.');
+    // Code spraying across freshly requested challenges is capped per phone, not per challenge.
+    await this.brake(`auth.otp.verify:${phone}`, 12, 900, 'تعداد تلاش‌های ورود زیاد است.');
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');

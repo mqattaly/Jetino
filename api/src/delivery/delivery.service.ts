@@ -22,6 +22,8 @@ const ROAD_FACTOR = 1.35;
 const AVERAGE_SPEED_METERS_PER_MINUTE = 430; // ~26 km/h in city traffic
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 500;
+/** A fix older than this is shown as "last seen", never as a live pin. */
+const LIVE_WINDOW_MS = 2 * 60 * 1000;
 const DIRECTION_TYPES = ['car', 'walk', 'transit', 'bicycle'];
 
 @Injectable()
@@ -105,6 +107,77 @@ export class DeliveryService {
     this.cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, estimate });
   }
 
+
+  /**
+   * Where the courier is right now. The customer, the business, the courier and
+   * staff may read it; everyone else gets the same 404 as a wrong order id, so
+   * this endpoint cannot be used to probe which orders exist.
+   *
+   * A position older than two minutes is reported as stale instead of being
+   * drawn, because a frozen pin is worse than no pin: it looks like a courier
+   * standing still at the wrong corner.
+   */
+  async trackingForOrder(user: Principal, orderIdInput: unknown) {
+    if (typeof orderIdInput !== 'string' || !uuidPattern.test(orderIdInput)) throw new BadRequestException('شناسهٔ سفارش معتبر نیست.');
+    if (!uuidPattern.test(user.sub)) throw new NotFoundException('سفارش پیدا نشد یا به این حساب مربوط نیست.');
+    const result = await this.pool.query(
+      `SELECT o.id,o.status,
+              o.delivery_latitude_snapshot::float8 AS "destinationLatitude",
+              o.delivery_longitude_snapshot::float8 AS "destinationLongitude",
+              d.id AS "driverId",d.full_name AS "driverName",d.photo_url AS "driverPhotoUrl",
+              d.plate_number AS "driverPlateNumber",d.vehicle_type AS "driverVehicleType",
+              d.verification_status AS "driverVerificationStatus",
+              dl.latitude::float8 AS "latitude",dl.longitude::float8 AS "longitude",
+              dl.accuracy_meters AS "accuracyMeters",dl.updated_at AS "locationUpdatedAt"
+       FROM orders o
+       JOIN businesses b ON b.id=o.business_id
+       LEFT JOIN delivery_assignments da ON da.order_id=o.id
+       LEFT JOIN drivers d ON d.id=da.driver_id
+       LEFT JOIN driver_locations dl ON dl.driver_id=d.id
+       WHERE o.id=$1 AND (o.customer_id=$2 OR b.owner_id=$2 OR d.user_id=$2 OR $3::boolean)`,
+      [orderIdInput, user.sub, STAFF_ROLES.some(role => user.roles?.includes(role))],
+    );
+    if (!result.rowCount) throw new NotFoundException('سفارش پیدا نشد یا به این حساب مربوط نیست.');
+    const row = result.rows[0];
+    const missing = 'هنوز پیکی به این سفارش تخصیص نیافته است.';
+    if (!row.driverId) return { orderId: row.id, status: row.status, driver: null, location: null, stale: false, live: false, message: missing };
+
+    const driver = {
+      id: row.driverId,
+      name: row.driverName,
+      photoUrl: row.driverPhotoUrl,
+      plateNumber: row.driverPlateNumber,
+      vehicleType: row.driverVehicleType,
+      verificationStatus: row.driverVerificationStatus,
+      verified: row.driverVerificationStatus === 'APPROVED',
+    };
+    const point = row.latitude === null ? null : DeliveryService.pin(String(row.latitude), String(row.longitude));
+    const updatedAt = row.locationUpdatedAt ? new Date(row.locationUpdatedAt) : null;
+    const live = Boolean(point && updatedAt && Date.now() - updatedAt.getTime() <= LIVE_WINDOW_MS);
+
+    let distanceMeters: number | null = null;
+    let etaMinutes: number | null = null;
+    const destination = DeliveryService.pin(String(row.destinationLatitude ?? ''), String(row.destinationLongitude ?? ''));
+    if (point && destination) {
+      distanceMeters = Math.round(DeliveryService.haversineMeters(point, destination) * ROAD_FACTOR);
+      etaMinutes = Math.max(1, Math.round(distanceMeters / AVERAGE_SPEED_METERS_PER_MINUTE));
+    }
+
+    return {
+      orderId: row.id,
+      status: row.status,
+      driver,
+      live,
+      stale: Boolean(point && !live),
+      location: live && point ? { latitude: point.latitude, longitude: point.longitude, accuracyMeters: row.accuracyMeters, updatedAt } : null,
+      lastSeenAt: updatedAt,
+      destination,
+      distanceMeters,
+      etaMinutes,
+      etaSource: distanceMeters === null ? null : 'ESTIMATED',
+      message: live ? 'موقعیت پیک به‌روز است.' : point ? 'آخرین موقعیت ثبت‌شدهٔ پیک نمایش داده می‌شود؛ ممکن است چند دقیقه قدیمی باشد.' : 'پیک هنوز موقعیت خود را به اشتراک نگذاشته است.',
+    };
+  }
   async estimateForOrder(user: Principal, orderIdInput: unknown): Promise<OrderEstimate> {
     if (typeof orderIdInput !== 'string' || !uuidPattern.test(orderIdInput)) throw new BadRequestException('شناسهٔ سفارش معتبر نیست.');
     const order = await this.orderPins(user, orderIdInput);

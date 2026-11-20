@@ -13,6 +13,8 @@ import { CancellationsModule } from './cancellations/cancellations.module';
 import { PartnersModule } from './partners/partners.module';
 import { WalletModule } from './wallet/wallet.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { SecurityModule } from './security/security.module';
+import { SafetyModule } from './safety/safety.module';
 
-@Module({ imports: [DatabaseModule, AuthModule, BusinessesModule, AdminModule, AddressesModule, OrdersModule, DriversModule, DeliveryModule, SupportModule, CancellationsModule, NotificationsModule, WalletModule, PartnersModule], controllers: [HealthController] })
+@Module({ imports: [DatabaseModule, SecurityModule, SafetyModule, AuthModule, BusinessesModule, AdminModule, AddressesModule, OrdersModule, DriversModule, DeliveryModule, SupportModule, CancellationsModule, NotificationsModule, WalletModule, PartnersModule], controllers: [HealthController] })
 export class AppModule {}

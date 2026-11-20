@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { DriversService } from './drivers.service';
@@ -9,6 +9,10 @@ export class DriversController{
  constructor(@Inject(DriversService)private readonly drivers:DriversService){}
  @Get() profile(@Req()req:DriverRequest){return this.drivers.profile(req.user);}
  @Patch() saveProfile(@Req()req:DriverRequest,@Body()body:{fullName?:unknown;vehicleType?:unknown;plateNumber?:unknown;photoUrl?:unknown}){return this.drivers.saveProfile(req.user,body??{});}
+ @Get('verification') verification(@Req()req:DriverRequest){return this.drivers.verification(req.user);}
+ @Post('verification') submitVerification(@Req()req:DriverRequest,@Body()body:{idCardUrl?:unknown;selfieUrl?:unknown}){return this.drivers.submitVerification(req.user,body??{});}
+ @Post('location') shareLocation(@Req()req:DriverRequest,@Body()body:{orderId?:unknown;latitude?:unknown;longitude?:unknown;accuracy?:unknown}){return this.drivers.shareLocation(req.user,body??{});}
+ @Delete('location') clearLocation(@Req()req:DriverRequest){return this.drivers.clearLocation(req.user);}
  @Get('deliveries') list(@Req()req:DriverRequest){return this.drivers.deliveries(req.user);}
  @Get('wallet/cash-summary') cashSummary(@Req()req:DriverRequest){return this.drivers.cashSummary(req.user);}
  @Patch('deliveries/:orderId/status') status(@Req()req:DriverRequest,@Param('orderId')id:string,@Body()body:{status?:unknown;code?:unknown}){return this.drivers.transition(req.user,id,body?.status,body?.code);}

@@ -6,6 +6,7 @@ import { DriversService } from './drivers.service';
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==';
 
 const orderId = '123e4567-e89b-12d3-a456-426614174010';
+const noLimit = { enforce: async () => undefined } as never;
 const driverUserId = 'driver-1';
 
 function serviceWithRows(rows: Record<string, unknown> | null) {
@@ -29,7 +30,8 @@ function serviceWithRows(rows: Record<string, unknown> | null) {
     },
     release() {},
   };
-  return { service: new DriversService({ connect: async () => client } as never), statements };
+  const rateLimit = { enforce: async () => undefined };
+  return { service: new DriversService({ connect: async () => client } as never, rateLimit as never), statements };
 }
 
 describe('DriversService cash collection on delivery', () => {
@@ -45,7 +47,7 @@ describe('DriversService cash collection on delivery', () => {
 
   it('requires explicit confirmation and never reaches the database', async () => {
     let connected = false;
-    const service = new DriversService({ connect: async () => { connected = true; throw new Error('unreachable'); } } as never);
+    const service = new DriversService({ connect: async () => { connected = true; throw new Error('unreachable'); } } as never, noLimit);
     await assert.rejects(service.collectCash({ sub: driverUserId }, orderId, 'true'), BadRequestException);
     assert.equal(connected, false);
   });
@@ -98,7 +100,7 @@ describe('DriversService cash wallet', () => {
       if(sql.startsWith('SELECT id FROM drivers'))return{rows:[{id:'driver-9'}],rowCount:1};
       return{rows:[{openCashRial:'7500',openCount:3,settledTotalRial:'25000',settledCount:2,lastSettledAt:new Date('2026-11-16T09:00:00Z')}],rowCount:1};
     }};
-    const summary=await new DriversService(pool as never).cashSummary({sub:driverUserId});
+    const summary=await new DriversService(pool as never, noLimit).cashSummary({sub:driverUserId});
     assert.equal(summary.openCashRial,'7500');
     assert.equal(summary.openCount,3);
     assert.equal(summary.settledTotalRial,'25000');
@@ -111,7 +113,7 @@ describe('DriversService cash wallet', () => {
 
   it('refuses a wallet view for an account without an active driver profile',async()=>{
     const queries:string[]=[];
-    const service=new DriversService({query:async(sql:string)=>{queries.push(sql);return{rows:[],rowCount:0};},connect:async()=>{throw new Error('unreachable');}} as never);
+    const service=new DriversService({query:async(sql:string)=>{queries.push(sql);return{rows:[],rowCount:0};},connect:async()=>{throw new Error('unreachable');}} as never, noLimit);
     await assert.rejects(service.cashSummary({sub:driverUserId}),ForbiddenException);
     assert.deepEqual(queries,[`SELECT id FROM drivers WHERE user_id=$1 AND status='ACTIVE'`]);
   });
@@ -141,7 +143,7 @@ describe('DriversService delivery transitions', () => {
 
   it('rejects unsupported target statuses and malformed order ids before opening a transaction', async () => {
     let connected = false;
-    const service = new DriversService({ connect: async () => { connected = true; throw new Error('unreachable'); } } as never);
+    const service = new DriversService({ connect: async () => { connected = true; throw new Error('unreachable'); } } as never, noLimit);
     await assert.rejects(service.transition({ sub: driverUserId }, orderId, 'CANCELLED'), BadRequestException);
     await assert.rejects(service.transition({ sub: driverUserId }, 'not-a-uuid', 'DELIVERED'), BadRequestException);
     assert.equal(connected, false);
@@ -158,7 +160,7 @@ describe('DriversService delivery transitions', () => {
       connect: async () => { throw new Error('should not connect'); },
       query: async (sql: string) => { statements.push(sql); return { rows: [], rowCount: 0 }; },
     };
-    const service = new DriversService(pool as never);
+    const service = new DriversService(pool as never, noLimit);
     await assert.rejects(service.deliveries({ sub: driverUserId }), /should not connect|حساب راننده/);
     assert.match(statements[0], /FROM drivers WHERE user_id=\$1 AND status='ACTIVE'/);
   });
@@ -185,7 +187,7 @@ describe('DriversService door-check profile', () => {
       connect: async () => client,
       query: async (sql: string, values?: unknown[]) => { statements.push({ sql, values }); return { rows: [profileRow], rowCount: 1 }; },
     };
-    return { service: new DriversService(pool as never), statements };
+    return { service: new DriversService(pool as never, noLimit), statements };
   };
 
   it('reports what is still missing before the courier can take a mission', async () => {

@@ -16,6 +16,7 @@ import { FeedbackService } from '../support/feedback.service';
 import { SupportService } from '../support/support.service';
 import { WalletService } from '../wallet/wallet.service';
 import { CancellationsService } from '../cancellations/cancellations.service';
+import { RateLimitService } from '../security/rate-limit.service';
 import { NotificationDeliveryService } from '../notifications/notification-delivery.service';
 import { notify } from '../notifications/notifications.util';
 import { allPushEventTypes } from '../notifications/notification-delivery.util';
@@ -90,7 +91,7 @@ suite('cash order flow against PostgreSQL', () => {
     orders = new OrdersService(pool);
     adminOrders = new AdminOrdersService(pool);
     reports = new AdminReportsService(pool);
-    drivers = new DriversService(pool);
+    drivers = new DriversService(pool, new RateLimitService(pool));
     businesses = new BusinessesService(pool);
     delivery = new DeliveryService(pool);
     audit = new AdminAuditService(pool);
