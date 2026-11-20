@@ -1,4 +1,5 @@
 import { Inject, Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { parseImageUrl } from '../security/security.util';
 import { Pool } from 'pg';
 import { PG_POOL } from '../database/database.module';
 
@@ -40,7 +41,7 @@ export class BusinessesService {
     );
     if (!result.rowCount) throw new NotFoundException('کسب‌وکار پیدا نشد.');
     const categories = await this.pool.query(
-      `SELECT c.id,c.name,c.sort_order,COALESCE(json_agg(json_build_object('id',p.id,'name',p.name,'description',p.description,'priceRial',p.price_rial::text) ORDER BY p.name) FILTER (WHERE p.id IS NOT NULL), '[]') AS products
+      `SELECT c.id,c.name,c.sort_order,COALESCE(json_agg(json_build_object('id',p.id,'name',p.name,'description',p.description,'priceRial',p.price_rial::text,'imageUrl',p.image_url) ORDER BY p.name) FILTER (WHERE p.id IS NOT NULL), '[]') AS products
        FROM menu_categories c LEFT JOIN products p ON p.category_id=c.id AND p.is_available=true
        WHERE c.business_id=$1 GROUP BY c.id ORDER BY c.sort_order,c.name`, [id],
     );
@@ -149,16 +150,16 @@ export class BusinessesService {
   async mineMenu(user: Principal, idInput: unknown) {
     const businessId = this.id(idInput, 'شناسهٔ کسب‌وکار');
     const result = await this.pool.query(
-      `SELECT c.id AS category_id,c.name AS category_name,c.sort_order,p.id AS product_id,p.name AS product_name,p.description AS product_description,p.price_rial::text AS price_rial,p.is_available
+      `SELECT c.id AS category_id,c.name AS category_name,c.sort_order,p.id AS product_id,p.name AS product_name,p.description AS product_description,p.price_rial::text AS price_rial,p.is_available,p.image_url
        FROM businesses b LEFT JOIN menu_categories c ON c.business_id=b.id LEFT JOIN products p ON p.category_id=c.id
        WHERE b.id=$1 AND b.owner_id=$2 ORDER BY c.sort_order,c.name,p.name`, [businessId,user.sub],
     );
     if (!result.rowCount) throw new NotFoundException('کسب‌وکار پیدا نشد یا دسترسی ندارید.');
-    const categories = new Map<string,{id:string;name:string;sortOrder:number;products:Array<{id:string;name:string;description:string|null;priceRial:string;isAvailable:boolean}>}>();
+    const categories = new Map<string,{id:string;name:string;sortOrder:number;products:Array<{id:string;name:string;description:string|null;priceRial:string;isAvailable:boolean;imageUrl:string|null}>}>();
     for (const row of result.rows) {
       if (!row.category_id) continue;
       if (!categories.has(row.category_id)) categories.set(row.category_id,{id:row.category_id,name:row.category_name,sortOrder:row.sort_order,products:[]});
-      if (row.product_id) categories.get(row.category_id)!.products.push({id:row.product_id,name:row.product_name,description:row.product_description,priceRial:row.price_rial,isAvailable:row.is_available});
+      if (row.product_id) categories.get(row.category_id)!.products.push({id:row.product_id,name:row.product_name,description:row.product_description,priceRial:row.price_rial,isAvailable:row.is_available,imageUrl:row.image_url});
     }
     return {businessId,categories:[...categories.values()]};
   }
@@ -194,7 +195,7 @@ export class BusinessesService {
     }
   }
 
-  async createProduct(user: Principal, categoryInput: unknown, body: { name?: unknown; description?: unknown; priceRial?: unknown }) {
+  async createProduct(user: Principal, categoryInput: unknown, body: { name?: unknown; description?: unknown; priceRial?: unknown; imageUrl?: unknown }) {
     const categoryId = this.id(categoryInput, 'شناسهٔ دسته‌بندی');
     const name = typeof body?.name === 'string' ? body.name.trim() : '';
     const description = typeof body?.description === 'string' ? body.description.trim() : null;
@@ -206,17 +207,19 @@ export class BusinessesService {
       `SELECT 1 FROM menu_categories c JOIN businesses b ON b.id=c.business_id WHERE c.id=$1 AND b.owner_id=$2`, [categoryId,user.sub],
     );
     if (!owns.rowCount) throw new NotFoundException('دسته‌بندی پیدا نشد یا دسترسی ندارید.');
+    const imageUrl = parseImageUrl(body?.imageUrl, 'تصویر محصول');
     const result = await this.pool.query(
-      `INSERT INTO products(category_id,name,description,price_rial) VALUES($1,$2,$3,$4) RETURNING id,name,description,price_rial,is_available`,
-      [categoryId,name,description,price.toString()],
+      `INSERT INTO products(category_id,name,description,price_rial,image_url) VALUES($1,$2,$3,$4,$5) RETURNING id,name,description,price_rial::text AS price_rial,is_available,image_url`,
+      [categoryId,name,description,price.toString(),imageUrl],
     );
     await this.audit(user.sub, 'MENU_PRODUCT_CREATED', 'PRODUCT', result.rows[0].id);
     return result.rows[0];
   }
 
-  async updateProduct(user: Principal, productInput: unknown, body: { name?: unknown; description?: unknown; priceRial?: unknown }) {
+  async updateProduct(user: Principal, productInput: unknown, body: { name?: unknown; description?: unknown; priceRial?: unknown; imageUrl?: unknown }) {
     const id = this.id(productInput, 'شناسهٔ محصول');
-    if (!body || (body.name === undefined && body.description === undefined && body.priceRial === undefined)) throw new BadRequestException('حداقل یک فیلد برای ویرایش لازم است.');
+    if (!body || (body.name === undefined && body.description === undefined && body.priceRial === undefined && body.imageUrl === undefined)) throw new BadRequestException('حداقل یک فیلد برای ویرایش لازم است.');
+    const imageUrl = body.imageUrl === undefined ? undefined : parseImageUrl(body.imageUrl, 'تصویر محصول');
     const name = body.name === undefined ? null : typeof body.name === 'string' ? body.name.trim() : '';
     const description = body.description === undefined ? null : typeof body.description === 'string' ? body.description.trim() : '';
     const rawPrice = body.priceRial;
@@ -224,10 +227,10 @@ export class BusinessesService {
     const price = rawPrice === undefined ? null : validPrice ? BigInt(rawPrice as string | number) : -1n;
     if ((name !== null && (!name || name.length > 160)) || (description !== null && description.length > 1000) || !validPrice || (price !== null && (price < 0n || price > 9_000_000_000_000_000n))) throw new BadRequestException('اطلاعات یا قیمت محصول معتبر نیست. قیمت را به ریال وارد کنید.');
     const result = await this.pool.query(
-      `UPDATE products p SET name=COALESCE($3,p.name),description=CASE WHEN $4 THEN $5 ELSE p.description END,price_rial=COALESCE($6,p.price_rial)
+      `UPDATE products p SET name=COALESCE($3,p.name),description=CASE WHEN $4 THEN $5 ELSE p.description END,price_rial=COALESCE($6,p.price_rial),image_url=CASE WHEN $7 THEN $8 ELSE p.image_url END
        FROM menu_categories c,businesses b WHERE p.category_id=c.id AND c.business_id=b.id AND p.id=$1 AND b.owner_id=$2
-       RETURNING p.id,p.name,p.description,p.price_rial::text AS price_rial,p.is_available`,
-      [id,user.sub,name,body.description!==undefined,description,price?.toString()??null],
+       RETURNING p.id,p.name,p.description,p.price_rial::text AS price_rial,p.is_available,p.image_url`,
+      [id,user.sub,name,body.description!==undefined,description,price?.toString()??null,body.imageUrl!==undefined,imageUrl??null],
     );
     if (!result.rowCount) throw new NotFoundException('محصول پیدا نشد یا دسترسی ندارید.');
     await this.audit(user.sub, 'MENU_PRODUCT_UPDATED', 'PRODUCT', id);

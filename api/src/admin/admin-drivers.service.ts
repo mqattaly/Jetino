@@ -6,7 +6,7 @@ import { PG_POOL } from '../database/database.module';
 @Injectable()
 export class AdminDriversService {
   constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
-  async list(){const result=await this.pool.query(`SELECT d.id,d.status,d.created_at AS "createdAt",u.phone,r.name AS "regionName" FROM drivers d JOIN users u ON u.id=d.user_id JOIN regions r ON r.id=d.region_id ORDER BY d.status,d.created_at DESC`);return result.rows;}
+  async list(){const result=await this.pool.query(`SELECT d.id,d.status,d.created_at AS "createdAt",u.phone,r.name AS "regionName",d.full_name AS "fullName",d.plate_number AS "plateNumber",d.vehicle_type AS "vehicleType",d.photo_url AS "photoUrl",(d.full_name IS NOT NULL AND d.plate_number IS NOT NULL AND d.photo_url IS NOT NULL AND d.vehicle_type IS NOT NULL) AS "profileComplete" FROM drivers d JOIN users u ON u.id=d.user_id JOIN regions r ON r.id=d.region_id ORDER BY d.status,d.created_at DESC`);return result.rows;}
   async create(actor:string,body:{phone?:unknown;regionSlug?:unknown}){
     if(typeof body?.phone!=='string')throw new BadRequestException('شمارهٔ موبایل معتبر نیست.');
     const raw=body.phone.replace(/[\s()-]/g,'');const phone=/^09\d{9}$/.test(raw)?`+98${raw.slice(1)}`:raw;

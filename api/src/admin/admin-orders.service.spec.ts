@@ -67,13 +67,13 @@ describe('AdminOrdersService driver assignment',()=>{
   it('assigns only when the order is ready for pickup and informs the customer and driver',async()=>{
     const {service,statements}=poolWith(async(sql)=>{
       if(sql.startsWith('SELECT o.id,o.status,o.customer_id'))return{rows:[{id:orderId,status:'READY_FOR_PICKUP',customer_id:'customer-1',business_name:'کسب‌وکار نمونه',region_id:'region-1'}],rowCount:1};
-      if(sql.startsWith('SELECT id,user_id FROM drivers'))return{rows:[{id:driverId,user_id:'driver-user'}],rowCount:1};
+      if(sql.startsWith('SELECT id,user_id'))return{rows:[{id:driverId,user_id:'driver-user',full_name:'رضا پیک',vehicle_type:'MOTORCYCLE',plate_number:'12ب34567',photo_url:'https://cdn.example.test/r.jpg'}],rowCount:1};
       return{rows:[],rowCount:1};
     });
     assert.deepEqual(await service.assign(actor,orderId,driverId),{orderId,driverId,status:'DRIVER_ASSIGNED'});
     assert.equal(statements[0].sql,'BEGIN');
     assert.match(statements[1].sql,/FOR UPDATE OF o/);
-    assert.match(statements.find(entry=>entry.sql.startsWith('SELECT id,user_id FROM drivers'))!.sql,/region_id=\$2 AND status='ACTIVE'/);
+    assert.match(statements.find(entry=>entry.sql.startsWith('SELECT id,user_id'))!.sql,/region_id=\$2 AND status='ACTIVE'/);
     assert.ok(statements.some(entry=>entry.sql.startsWith(`UPDATE orders SET status='DRIVER_ASSIGNED'`)));
     const events=statements.filter(entry=>entry.sql.startsWith('INSERT INTO notifications')).map(entry=>entry.values?.[1]);
     assert.deepEqual(events,['ORDER_DRIVER_ASSIGNED','DELIVERY_ASSIGNED']);
@@ -83,7 +83,7 @@ describe('AdminOrdersService driver assignment',()=>{
   it('reassigns an already assigned order without repeating the customer transition',async()=>{
     const {service,statements}=poolWith(async(sql)=>{
       if(sql.startsWith('SELECT o.id,o.status,o.customer_id'))return{rows:[{id:orderId,status:'DRIVER_ASSIGNED',customer_id:'customer-1',business_name:'کسب‌وکار نمونه',region_id:'region-1'}],rowCount:1};
-      if(sql.startsWith('SELECT id,user_id FROM drivers'))return{rows:[{id:driverId,user_id:'driver-user'}],rowCount:1};
+      if(sql.startsWith('SELECT id,user_id'))return{rows:[{id:driverId,user_id:'driver-user',full_name:'رضا پیک',vehicle_type:'MOTORCYCLE',plate_number:'12ب34567',photo_url:'https://cdn.example.test/r.jpg'}],rowCount:1};
       return{rows:[],rowCount:1};
     });
     assert.deepEqual(await service.assign(actor,orderId,driverId),{orderId,driverId,status:'DRIVER_ASSIGNED'});
@@ -109,6 +109,17 @@ describe('AdminOrdersService driver assignment',()=>{
       return{rows:[],rowCount:1};
     });
     await assert.rejects(service.assign(actor,orderId,driverId),ConflictException);
+    assert.ok(!statements.some(entry=>entry.sql.startsWith('INSERT INTO delivery_assignments')));
+    assert.equal(statements.at(-1)?.sql,'ROLLBACK');
+  });
+
+  it('refuses a courier whose plate and photo the customer cannot see yet',async()=>{
+    const {service,statements}=poolWith(async(sql)=>{
+      if(sql.startsWith('SELECT o.id,o.status,o.customer_id'))return{rows:[{id:orderId,status:'READY_FOR_PICKUP',customer_id:'customer-1',business_name:'کسب‌وکار نمونه',region_id:'region-1'}],rowCount:1};
+      if(sql.startsWith('SELECT id,user_id'))return{rows:[{id:driverId,user_id:'driver-user',full_name:null,vehicle_type:null,plate_number:null,photo_url:null}],rowCount:1};
+      return{rows:[],rowCount:1};
+    });
+    await assert.rejects(service.assign(actor,orderId,driverId),/ناقص/);
     assert.ok(!statements.some(entry=>entry.sql.startsWith('INSERT INTO delivery_assignments')));
     assert.equal(statements.at(-1)?.sql,'ROLLBACK');
   });

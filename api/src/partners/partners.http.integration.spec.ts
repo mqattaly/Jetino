@@ -34,7 +34,10 @@ suite('partner onboarding over HTTP and PostgreSQL',()=>{
   assert.equal((await request('/partner-applications/drivers/mine')).status,401);
   const owner=(await login(phones.owner)).accessToken;const driver=(await login(phones.driver)).accessToken;const other=(await login(phones.other)).accessToken;const admin=(await login(phones.admin)).accessToken;
   assert.equal((await request('/partner-applications/drivers','GET',other)).status,403);
-  const info={fullName:'راننده آزمایشی',vehicleType:'MOTORCYCLE',note:'آشنایی با منطقه'};
+  const photo='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==';
+  const info={fullName:'راننده آزمایشی',vehicleType:'MOTORCYCLE',note:'آشنایی با منطقه',plateNumber:'12 ب 34567',photoUrl:photo};
+  assert.equal((await request('/partner-applications/drivers','POST',driver,{fullName:'بی پلاک',vehicleType:'CAR'})).status,400,'a plate is required');
+  assert.equal((await request('/partner-applications/drivers','POST',driver,{...info,plateNumber:'12x345'})).status,400,'an impossible plate is rejected');
   const applied=await request('/partner-applications/drivers','POST',driver,info);assert.equal(applied.status,201);const application=await applied.json() as {id:string;status:string};assert.equal(application.status,'PENDING');
   assert.equal((await request('/partner-applications/drivers','POST',driver,info)).status,409);
   assert.deepEqual(await (await request('/partner-applications/drivers/mine','GET',other)).json(),[]);
@@ -60,10 +63,12 @@ suite('partner onboarding over HTTP and PostgreSQL',()=>{
   assert.equal((await request(`/businesses/mine/${business.id}/orderability`,'PATCH',owner,{acceptingOrders:true})).status,200);
   const managed=await request('/admin/businesses','POST',admin,{phone:phones.other,name:'ثبت مدیر',applicationKey:randomUUID()});assert.equal(managed.status,201);
   assert.equal((await request('/admin/businesses','POST',other,{phone:phones.owner,name:'نباید مجاز باشد'})).status,403);
-  const retryApp=await request('/partner-applications/drivers','POST',other,{fullName:'راننده دوم',vehicleType:'CAR'});assert.equal(retryApp.status,201);
+  const retryApp=await request('/partner-applications/drivers','POST',other,{fullName:'راننده دوم',vehicleType:'CAR',plateNumber:'45ج67890',photoUrl:photo});assert.equal(retryApp.status,201);
   const retryId=(await retryApp.json() as {id:string}).id;
   assert.equal((await request(`/partner-applications/drivers/${retryId}`,'PATCH',admin,{decision:'REJECTED',note:'نیاز به بررسی بیشتر'})).status,200);
-  assert.equal((await request('/partner-applications/drivers','POST',other,{fullName:'راننده دوم',vehicleType:'CAR'})).status,201,'a rejected applicant may submit again');
+  assert.equal((await request('/partner-applications/drivers','POST',other,{fullName:'راننده دوم',vehicleType:'CAR',plateNumber:'45ج67890',photoUrl:photo})).status,201,'a rejected applicant may submit again');
+  const approvedDriver=(await pool.query('SELECT full_name,plate_number,vehicle_type,photo_url FROM drivers WHERE user_id=$1',[ids.driver])).rows[0];
+  assert.deepEqual({name:approvedDriver.full_name,plate:approvedDriver.plate_number,vehicle:approvedDriver.vehicle_type,photo:Boolean(approvedDriver.photo_url)},{name:'راننده آزمایشی',plate:'12ب34567',vehicle:'MOTORCYCLE',photo:true},'approval carries the door-check identity onto the driver');
   const driverId=(await pool.query('SELECT id FROM drivers WHERE user_id=$1',[ids.driver])).rows[0].id as string;
   const orderId=randomUUID();
   await pool.query(`INSERT INTO orders(id,customer_id,business_id,status,payment_method,payment_status,subtotal_rial,delivery_fee_rial,commission_rial,commission_bps,total_rial) VALUES($1,$2,$3,'DRIVER_ASSIGNED','CASH','PENDING',1000,0,0,0,1000)`,[orderId,ids.other,business.id]);

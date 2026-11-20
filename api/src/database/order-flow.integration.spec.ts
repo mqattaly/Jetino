@@ -84,7 +84,7 @@ suite('cash order flow against PostgreSQL', () => {
       await admin.query(`INSERT INTO addresses(id,user_id,region_id,label,address_text,latitude,longitude,is_default) VALUES($1,$2,$3,'خانه','خیابان ساحلی، پلاک ۴',27.200000,55.700000,true)`, [uuids.address, uuids.customer, regionId]);
       await admin.query(`INSERT INTO regions(id,name,slug,is_active,delivery_fee_rial) VALUES($1,'منطقهٔ دیگر','other-region',true,400000)`, [uuids.otherRegion]);
       await admin.query(`INSERT INTO addresses(id,user_id,region_id,label,address_text,is_default) VALUES($1,$2,$3,'ویلا','خانهٔ تابستانی',false)`, [uuids.otherAddress, uuids.customer, uuids.otherRegion]);
-      await admin.query(`INSERT INTO drivers(id,user_id,region_id,status) VALUES($1,$2,$3,'ACTIVE')`, [uuids.driverProfile, uuids.driver, regionId]);
+      await admin.query(`INSERT INTO drivers(id,user_id,region_id,status,full_name,vehicle_type,plate_number,photo_url) VALUES($1,$2,$3,'ACTIVE','رضا پیک','MOTORCYCLE','12ب34567','https://cdn.example.test/riders/reza.jpg')`, [uuids.driverProfile, uuids.driver, regionId]);
     } finally { await admin.end(); }
     pool = new Pool({ connectionString: databaseUrl, options: `-c search_path=${schema}` });
     orders = new OrdersService(pool);
@@ -257,9 +257,24 @@ suite('cash order flow against PostgreSQL', () => {
     assert.equal(task.deliveryLongitude, 55.7);
     assert.equal(task.businessPhone, '09120000002');
 
+    // The shop and the customer both see who is coming, the way Snapp shows the courier.
+    const customerView = await orders.detail({ sub: uuids.customer }, order.id);
+    assert.deepEqual(customerView.driver, { name: 'رضا پیک', plate: '12ب34567', vehicleType: 'MOTORCYCLE', photoUrl: 'https://cdn.example.test/riders/reza.jpg' });
+    assert.match(customerView.handover.code ?? '', /^\d{4}$/, 'the customer holds a four-digit handover code');
+    const shopOrders = await orders.businessOrders({ sub: uuids.owner });
+    assert.equal(shopOrders.find(item => item.id === order.id)!.driverPlate, '12ب34567');
+    const listedCustomer = await orders.mine({ sub: uuids.customer });
+    const listedRow = listedCustomer.find(item => item.id === order.id)!;
+    assert.equal(listedRow.driverName, 'رضا پیک');
+    assert.ok(!('driverPhotoUrl' in listedRow), 'the list stays light: the courier photo is only in the order detail');
+
     await assert.rejects(drivers.collectCash({ sub: uuids.driver }, order.id, true), /پس از تحویل سفارش/);
     await drivers.transition({ sub: uuids.driver }, order.id, 'OUT_FOR_DELIVERY');
-    await drivers.transition({ sub: uuids.driver }, order.id, 'DELIVERED');
+    const code = (await orders.detail({ sub: uuids.customer }, order.id)).handover.code!;
+    await assert.rejects(drivers.transition({ sub: uuids.driver }, order.id, 'DELIVERED', '0000' === code ? '1111' : '0000'), /کد تحویل اشتباه/);
+    assert.equal((await orders.detail({ sub: uuids.customer }, order.id)).status, 'OUT_FOR_DELIVERY', 'a wrong code must not deliver the order');
+    assert.equal((await orders.detail({ sub: uuids.customer }, order.id)).handover.code, code, 'the code survives a failed attempt');
+    await drivers.transition({ sub: uuids.driver }, order.id, 'DELIVERED', code);
     const beforeCollection = await drivers.cashSummary({ sub: uuids.driver });
     assert.deepEqual({ open: beforeCollection.openCashRial, openCount: beforeCollection.openCount, settled: beforeCollection.settledTotalRial }, { open: '0', openCount: 0, settled: '0' }, 'nothing is owed to the driver before the money is actually taken');
 

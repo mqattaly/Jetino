@@ -1,7 +1,8 @@
 import { Inject, Injectable, BadRequestException, ConflictException, NotFoundException, ServiceUnavailableException, ForbiddenException } from '@nestjs/common';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { Pool, PoolClient } from 'pg';
 import { PG_POOL } from '../database/database.module';
+import { decryptDeliveryCode, encryptDeliveryCode, generateDeliveryCode, hashDeliveryCode } from '../security/security.util';
 import { notify } from '../notifications/notifications.util';
 import { decide, readPolicy, rejectionMessage } from '../cancellations/cancellation-policy';
 import { cancelOrder, staffIds, writeAudit } from '../cancellations/cancellation-writes';
@@ -114,20 +115,24 @@ export class OrdersService {
         await client.query('COMMIT'); return { ...order, replayed: true };
       }
       const price = await this.calculate(client,user,input.businessId,input.addressId,input.items,true);
+      const orderId = randomUUID();
+      // Snapp-style handover proof: a four-digit code the customer reads at the door. Only its
+      // hash is compared; the encrypted copy exists so the customer can read it back.
+      const deliveryCode = generateDeliveryCode();
       const inserted = await client.query(
-        `INSERT INTO orders(customer_id,business_id,address_id,delivery_address_snapshot,delivery_instructions_snapshot,delivery_latitude_snapshot,delivery_longitude_snapshot,status,payment_method,payment_status,subtotal_rial,delivery_fee_rial,commission_rial,commission_bps,total_rial,idempotency_key,request_hash)
-         VALUES($1,$2,$3,$4,$5,$6,$7,'PENDING_BUSINESS','CASH','PENDING',$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
-        [user.sub,price.business.id,price.address.id,price.address.address_text,price.address.instructions,price.address.latitude,price.address.longitude,price.subtotal.toString(),price.deliveryFee.toString(),price.commission.toString(),price.commissionBps,price.total.toString(),idempotencyKey,requestHash],
+        `INSERT INTO orders(id,customer_id,business_id,address_id,delivery_address_snapshot,delivery_instructions_snapshot,delivery_latitude_snapshot,delivery_longitude_snapshot,status,payment_method,payment_status,subtotal_rial,delivery_fee_rial,commission_rial,commission_bps,total_rial,idempotency_key,request_hash,delivery_code_hash,delivery_code_encrypted)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,'PENDING_BUSINESS','CASH','PENDING',$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id`,
+        [orderId,user.sub,price.business.id,price.address.id,price.address.address_text,price.address.instructions,price.address.latitude,price.address.longitude,price.subtotal.toString(),price.deliveryFee.toString(),price.commission.toString(),price.commissionBps,price.total.toString(),idempotencyKey,requestHash,hashDeliveryCode(orderId,deliveryCode),encryptDeliveryCode(deliveryCode)],
       );
-      const orderId = inserted.rows[0].id as string;
+      const createdId = inserted.rows[0].id as string;
       for (const line of price.lines) await client.query(
         `INSERT INTO order_items(order_id,product_id,product_name,unit_price_rial,quantity,line_total_rial) VALUES($1,$2,$3,$4,$5,$6)`,
-        [orderId,line.productId,line.productName,line.unitPriceRial,line.quantity,line.lineTotalRial],
+        [createdId,line.productId,line.productName,line.unitPriceRial,line.quantity,line.lineTotalRial],
       );
-      await client.query(`INSERT INTO order_status_history(order_id,from_status,to_status,actor_id,reason) VALUES($1,NULL,'PENDING_BUSINESS',$2,'Order created')`, [orderId,user.sub]);
-      await notify(client,price.business.owner_id,'ORDER_NEW','سفارش تازه دارید','یک سفارش جدید برای بررسی ثبت شده است.',{orderId},{dedupeKey:orderId});
-      await client.query(`INSERT INTO audit_logs(actor_id,action,entity_type,entity_id,metadata) VALUES($1,'ORDER_CREATED','ORDER',$2,$3::jsonb)`, [user.sub,orderId,JSON.stringify({paymentMethod:'CASH',currency:'IRR'})]);
-      const order = await this.orderDetails(client,user,orderId);
+      await client.query(`INSERT INTO order_status_history(order_id,from_status,to_status,actor_id,reason) VALUES($1,NULL,'PENDING_BUSINESS',$2,'Order created')`, [createdId,user.sub]);
+      await notify(client,price.business.owner_id,'ORDER_NEW','سفارش تازه دارید','یک سفارش جدید برای بررسی ثبت شده است.',{orderId:createdId},{dedupeKey:createdId});
+      await client.query(`INSERT INTO audit_logs(actor_id,action,entity_type,entity_id,metadata) VALUES($1,'ORDER_CREATED','ORDER',$2,$3::jsonb)`, [user.sub,createdId,JSON.stringify({paymentMethod:'CASH',currency:'IRR'})]);
+      const order = await this.orderDetails(client,user,createdId);
       await client.query('COMMIT'); return { ...order, replayed: false };
     } catch(error) { try { await client.query('ROLLBACK'); } catch { /* transaction already closed */ } throw error; }
     finally { client.release(); }
@@ -135,15 +140,19 @@ export class OrdersService {
 
   async mine(user: Principal) {
     const result = await this.pool.query(
-      `SELECT id,business_id AS "businessId",status,payment_method AS "paymentMethod",payment_status AS "paymentStatus",total_rial AS "totalRial",estimated_prep_minutes AS "estimatedPrepMinutes",created_at AS "createdAt" FROM orders WHERE customer_id=$1 ORDER BY created_at DESC LIMIT 100`, [user.sub],
+      `SELECT o.id,o.business_id AS "businessId",o.status,o.payment_method AS "paymentMethod",o.payment_status AS "paymentStatus",o.total_rial AS "totalRial",o.estimated_prep_minutes AS "estimatedPrepMinutes",o.created_at AS "createdAt",d.full_name AS "driverName",d.plate_number AS "driverPlate",d.vehicle_type AS "driverVehicleType"
+       FROM orders o LEFT JOIN delivery_assignments da ON da.order_id=o.id LEFT JOIN drivers d ON d.id=da.driver_id
+       WHERE o.customer_id=$1 ORDER BY o.created_at DESC LIMIT 100`, [user.sub],
     );
     return result.rows;
   }
 
   async businessOrders(user: Principal) {
     const result = await this.pool.query(
-      `SELECT o.id,o.status,o.payment_method AS "paymentMethod",o.payment_status AS "paymentStatus",o.total_rial AS "totalRial",o.estimated_prep_minutes AS "estimatedPrepMinutes",o.created_at AS "createdAt",o.delivery_address_snapshot AS "deliveryAddress",u.phone AS "customerPhone"
-       FROM orders o JOIN businesses b ON b.id=o.business_id JOIN users u ON u.id=o.customer_id WHERE b.owner_id=$1 ORDER BY o.created_at DESC LIMIT 100`, [user.sub],
+      `SELECT o.id,o.status,o.payment_method AS "paymentMethod",o.payment_status AS "paymentStatus",o.total_rial AS "totalRial",o.estimated_prep_minutes AS "estimatedPrepMinutes",o.created_at AS "createdAt",o.delivery_address_snapshot AS "deliveryAddress",u.phone AS "customerPhone",d.full_name AS "driverName",d.plate_number AS "driverPlate",d.vehicle_type AS "driverVehicleType"
+       FROM orders o JOIN businesses b ON b.id=o.business_id JOIN users u ON u.id=o.customer_id
+       LEFT JOIN delivery_assignments da ON da.order_id=o.id LEFT JOIN drivers d ON d.id=da.driver_id
+       WHERE b.owner_id=$1 ORDER BY o.created_at DESC LIMIT 100`, [user.sub],
     );
     return result.rows;
   }
@@ -155,13 +164,21 @@ export class OrdersService {
 
   private async orderDetails(queryable: { query: Pool['query'] } | PoolClient, user: Principal, id: string) {
     const result = await queryable.query(
-      `SELECT o.id,o.customer_id,o.business_id,o.status,o.payment_method,o.payment_status,o.subtotal_rial,o.delivery_fee_rial,o.commission_rial,o.commission_bps,o.total_rial,o.estimated_prep_minutes,o.delivery_address_snapshot,o.delivery_instructions_snapshot,o.delivery_latitude_snapshot,o.delivery_longitude_snapshot,o.created_at,o.updated_at,b.name AS business_name
-       FROM orders o JOIN businesses b ON b.id=o.business_id WHERE o.id=$1 AND (o.customer_id=$2 OR b.owner_id=$2)`, [id,user.sub],
+      `SELECT o.id,o.customer_id,o.business_id,o.status,o.payment_method,o.payment_status,o.subtotal_rial,o.delivery_fee_rial,o.commission_rial,o.commission_bps,o.total_rial,o.estimated_prep_minutes,o.delivery_address_snapshot,o.delivery_instructions_snapshot,o.delivery_latitude_snapshot,o.delivery_longitude_snapshot,o.created_at,o.updated_at,o.delivery_code_encrypted,o.delivery_code_locked_at,b.name AS business_name,
+              d.full_name AS driver_name,d.plate_number AS driver_plate,d.vehicle_type AS driver_vehicle_type,d.photo_url AS driver_photo_url
+       FROM orders o JOIN businesses b ON b.id=o.business_id
+       LEFT JOIN delivery_assignments da ON da.order_id=o.id LEFT JOIN drivers d ON d.id=da.driver_id
+       WHERE o.id=$1 AND (o.customer_id=$2 OR b.owner_id=$2)`, [id,user.sub],
     );
     if (!result.rowCount) throw new NotFoundException('سفارش پیدا نشد.');
     const row = result.rows[0];
     const items = await queryable.query('SELECT product_name,unit_price_rial,quantity,line_total_rial FROM order_items WHERE order_id=$1 ORDER BY id',[id]);
     const history = await queryable.query('SELECT from_status,to_status,reason,created_at FROM order_status_history WHERE order_id=$1 ORDER BY created_at,id',[id]);
+    // Only the customer ever sees the handover code, and only while the order is on its way.
+    let handoverCode: string | null = null;
+    if (row.customer_id === user.sub && row.delivery_code_encrypted && ['DRIVER_ASSIGNED','OUT_FOR_DELIVERY'].includes(row.status as string)) {
+      try { handoverCode = decryptDeliveryCode(row.delivery_code_encrypted); } catch { handoverCode = null; }
+    }
     return {
       id:row.id,business:{id:row.business_id,name:row.business_name},status:row.status,estimatedPrepMinutes:row.estimated_prep_minutes,
       payment:{method:row.payment_method,status:row.payment_status},currency:'IRR',
@@ -169,6 +186,8 @@ export class OrdersService {
       delivery:{addressText:row.delivery_address_snapshot,instructions:row.delivery_instructions_snapshot,latitude:row.delivery_latitude_snapshot===null?null:Number(row.delivery_latitude_snapshot),longitude:row.delivery_longitude_snapshot===null?null:Number(row.delivery_longitude_snapshot)},
       items:items.rows.map((item: {product_name:string;unit_price_rial:string;quantity:number;line_total_rial:string})=>({productName:item.product_name,unitPriceRial:String(item.unit_price_rial),quantity:item.quantity,lineTotalRial:String(item.line_total_rial)})),
       history:history.rows,createdAt:row.created_at,
+      driver:row.driver_name||row.driver_plate||row.driver_photo_url?{name:row.driver_name,plate:row.driver_plate,vehicleType:row.driver_vehicle_type,photoUrl:row.driver_photo_url}:null,
+      handover:{code:handoverCode,locked:Boolean(row.delivery_code_locked_at)},
     };
   }
 

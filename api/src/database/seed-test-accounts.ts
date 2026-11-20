@@ -12,6 +12,12 @@ import { Client } from 'pg';
  * is set on the server (see AuthService.requestOtp). Remove that variable and the accounts are inert.
  */
 export const REGION_SLUG = 'bandar-khamir';
+/**
+ * The demo courier photo and dish photos are shipped inside `public/images`. The API only stores
+ * https links (or validated data URLs), so the seed points at this deployment by default — set
+ * `JETINO_PUBLIC_URL` when seeding a different origin.
+ */
+const ASSET_BASE = (process.env.JETINO_PUBLIC_URL || 'https://jetino-omega.vercel.app').replace(/\/+$/, '');
 const regionId = `(SELECT id FROM regions WHERE slug='${REGION_SLUG}')`;
 
 export type TestAccount = {
@@ -55,9 +61,9 @@ export function buildStatements(): string[] {
     // the same reason the two menu tables below stop at their own columns.
     `INSERT INTO businesses(id,owner_id,region_id,name,description,status,latitude,longitude) VALUES ('${BUSINESS_ID}','${OWNER.id}',${regionId},'کبابی نمونه','کسب‌وکار آزمایشی جتینو؛ فقط برای تست محیط.','ACTIVE',27.182,56.267) ON CONFLICT(id) DO UPDATE SET owner_id=EXCLUDED.owner_id, region_id=EXCLUDED.region_id, name=EXCLUDED.name, status='ACTIVE', latitude=EXCLUDED.latitude, longitude=EXCLUDED.longitude`,
     `INSERT INTO menu_categories(id,business_id,name,sort_order) VALUES ('${CATEGORY_ID}','${BUSINESS_ID}','کباب',1) ON CONFLICT(id) DO UPDATE SET business_id=EXCLUDED.business_id, name=EXCLUDED.name, sort_order=EXCLUDED.sort_order`,
-    `INSERT INTO products(id,category_id,name,description,price_rial,is_available) VALUES ('20000000-0000-4000-8000-000000000035','${CATEGORY_ID}','چلوکباب کوبده','دو سیخ کوبده با برنج و گوجه کبابی',1850000,true) ON CONFLICT(id) DO UPDATE SET category_id=EXCLUDED.category_id, price_rial=EXCLUDED.price_rial, is_available=true`,
-    `INSERT INTO products(id,category_id,name,description,price_rial,is_available) VALUES ('20000000-0000-4000-8000-000000000036','${CATEGORY_ID}','جوجه‌کباب','یک سیخ جوجه زعفرانی با برنج',1650000,true) ON CONFLICT(id) DO UPDATE SET category_id=EXCLUDED.category_id, price_rial=EXCLUDED.price_rial, is_available=true`,
-    `INSERT INTO drivers(id,user_id,region_id,status) VALUES ('${DRIVER_ID}','${DRIVER.id}',${regionId},'ACTIVE') ON CONFLICT(user_id) DO UPDATE SET region_id=EXCLUDED.region_id, status='ACTIVE', updated_at=now()`,
+    `INSERT INTO products(id,category_id,name,description,price_rial,is_available,image_url) VALUES ('20000000-0000-4000-8000-000000000035','${CATEGORY_ID}','چلوکباب کوبده','دو سیخ کوبده با برنج و گوجه کبابی',1850000,true,'${ASSET_BASE}/images/cat-kebab.jpg') ON CONFLICT(id) DO UPDATE SET category_id=EXCLUDED.category_id, price_rial=EXCLUDED.price_rial, is_available=true, image_url=EXCLUDED.image_url`,
+    `INSERT INTO products(id,category_id,name,description,price_rial,is_available,image_url) VALUES ('20000000-0000-4000-8000-000000000036','${CATEGORY_ID}','جوجه‌کباب','یک سیخ جوجه زعفرانی با برنج',1650000,true,'${ASSET_BASE}/images/cat-kebab.jpg') ON CONFLICT(id) DO UPDATE SET category_id=EXCLUDED.category_id, price_rial=EXCLUDED.price_rial, is_available=true, image_url=EXCLUDED.image_url`,
+    `INSERT INTO drivers(id,user_id,region_id,status,full_name,vehicle_type,plate_number,photo_url) VALUES ('${DRIVER_ID}','${DRIVER.id}',${regionId},'ACTIVE','پیک نمونه','MOTORCYCLE','12ب34567','${ASSET_BASE}/images/rider-demo.jpg') ON CONFLICT(user_id) DO UPDATE SET region_id=EXCLUDED.region_id, status='ACTIVE', full_name=EXCLUDED.full_name, vehicle_type=EXCLUDED.vehicle_type, plate_number=EXCLUDED.plate_number, photo_url=EXCLUDED.photo_url, updated_at=now()`,
     `INSERT INTO addresses(id,user_id,region_id,label,address_text,latitude,longitude,is_default) VALUES ('${ADDRESS_ID}','${CUSTOMER.id}',${regionId},'خانه','خیابان شهدا، پلاک ۱۲، واحد ۳ — بندرخمیر',27.177,56.269,true) ON CONFLICT(id) DO UPDATE SET user_id=EXCLUDED.user_id, region_id=EXCLUDED.region_id, address_text=EXCLUDED.address_text, latitude=EXCLUDED.latitude, longitude=EXCLUDED.longitude, is_default=true`,
   );
   return statements;

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { BusinessesService } from './businesses.service';
 
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==';
+
 const businessId = '123e4567-e89b-12d3-a456-426614174000';
 
 function serviceWithClient(onQuery: (sql: string, values?: unknown[]) => Promise<{ rows: unknown[]; rowCount: number }>) {
@@ -51,5 +53,41 @@ describe('BusinessesService owner controls', () => {
       BadRequestException,
     );
     assert.equal(queried, false);
+  });
+});
+
+describe('BusinessesService product photos', () => {
+  it('stores a validated photo and returns it with the product', async () => {
+    const statements: Array<{ sql: string; values?: unknown[] }> = [];
+    const service = new BusinessesService({
+      query: async (sql: string, values?: unknown[]) => {
+        statements.push({ sql, values });
+        if (sql.startsWith('SELECT 1 FROM menu_categories')) return { rows: [{ '?column?': 1 }], rowCount: 1 };
+        if (sql.startsWith('INSERT INTO products')) return { rows: [{ id: 'p1', name: 'کباب', price_rial: '1000', is_available: true, image_url: PNG }], rowCount: 1 };
+        return { rows: [], rowCount: 1 };
+      },
+      connect: async () => { throw new Error('unreachable'); },
+    } as never);
+    const product = await service.createProduct({ sub: 'owner-1' }, businessId, { name: 'کباب', priceRial: '1000', imageUrl: PNG });
+    assert.equal(product.image_url, PNG);
+    const insert = statements.find(entry => entry.sql.startsWith('INSERT INTO products'))!;
+    assert.match(insert.sql, /image_url/);
+    assert.equal(insert.values?.[4], PNG);
+    assert.ok(statements.some(entry => entry.sql.includes('INSERT INTO audit_logs') && entry.values?.[1] === 'MENU_PRODUCT_CREATED'));
+  });
+
+  it('clears a photo when the owner removes it and refuses an unsafe one', async () => {
+    const statements: Array<{ sql: string; values?: unknown[] }> = [];
+    const service = new BusinessesService({
+      query: async (sql: string, values?: unknown[]) => {
+        statements.push({ sql, values });
+        return { rows: [{ id: 'p1', image_url: null }], rowCount: 1 };
+      },
+    } as never);
+    await service.updateProduct({ sub: 'owner-1' }, '123e4567-e89b-12d3-a456-426614174001', { imageUrl: null });
+    const update = statements.find(entry => entry.sql.startsWith('UPDATE products'))!;
+    assert.equal(update.values?.[6], true);
+    assert.equal(update.values?.[7], null);
+    await assert.rejects(service.updateProduct({ sub: 'owner-1' }, '123e4567-e89b-12d3-a456-426614174001', { imageUrl: 'javascript:alert(1)' }), BadRequestException);
   });
 });
