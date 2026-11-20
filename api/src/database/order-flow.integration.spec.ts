@@ -314,7 +314,7 @@ suite('cash order flow against PostgreSQL', () => {
     const events = (await rows(`SELECT event_type FROM notifications WHERE user_id=$1 ORDER BY created_at,id`, [uuids.customer])).map(row => row.event_type);
     assert.deepEqual(events, ['ORDER_CONFIRMED', 'ORDER_PREPARING', 'ORDER_READY_FOR_PICKUP', 'ORDER_DRIVER_ASSIGNED', 'ORDER_OUT_FOR_DELIVERY', 'ORDER_DELIVERED', 'CASH_PAYMENT_CONFIRMED']);
     const audited = (await rows(`SELECT action FROM audit_logs WHERE entity_id=$1`, [order.id])).map(row => row.action).sort();
-    assert.deepEqual(audited, ['CASH_PAYMENT_COLLECTED', 'DRIVER_ASSIGNED', 'DRIVER_ORDER_STATUS_CHANGED', 'DRIVER_ORDER_STATUS_CHANGED', 'ORDER_CREATED', 'ORDER_STATUS_CHANGED', 'ORDER_STATUS_CHANGED', 'ORDER_STATUS_CHANGED'].sort(), 'every state change and both money moves must be traceable');
+    assert.deepEqual(audited, ['CASH_PAYMENT_COLLECTED', 'DELIVERY_CODE_REJECTED', 'DRIVER_ASSIGNED', 'DRIVER_ORDER_STATUS_CHANGED', 'DRIVER_ORDER_STATUS_CHANGED', 'ORDER_CREATED', 'ORDER_STATUS_CHANGED', 'ORDER_STATUS_CHANGED', 'ORDER_STATUS_CHANGED'].sort(), 'every state change, the rejected handover code and both money moves must be traceable');
     assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM cash_settlements WHERE settled_by=$1`, [uuids.admin]))[0].c, 1);
   });
 
