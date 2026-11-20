@@ -216,7 +216,7 @@ export class CancellationsService {
     if (!result.rowCount) throw new NotFoundException('سفارش پیدا نشد یا به این حساب مربوط نیست.');
     const totals = result.rows[0] as { collectedRial: string; refundedRial: string };
     const rows = await this.pool.query(
-      `SELECT r.id,r.amount_rial AS "amountRial",r.kind,r.funded_by AS "fundedBy",r.reason,r.created_at AS "createdAt",u.display_name AS "actorName"
+      `SELECT r.id,r.amount_rial AS "amountRial",r.kind,r.destination,r.funded_by AS "fundedBy",r.reason,r.created_at AS "createdAt",u.display_name AS "actorName"
        FROM order_refunds r JOIN users u ON u.id=r.created_by WHERE r.order_id=$1 ORDER BY r.created_at DESC,r.id DESC`, [orderId],
     );
     const collected = BigInt(totals.collectedRial);
@@ -230,7 +230,7 @@ export class CancellationsService {
     };
   }
 
-  async recordRefund(actor: Principal, orderIdInput: unknown, body: { amountRial?: unknown; reason?: unknown; fundedBy?: unknown }) {
+  async recordRefund(actor: Principal, orderIdInput: unknown, body: { amountRial?: unknown; reason?: unknown; fundedBy?: unknown; requestKey?: unknown }) {
     // money leaving the platform is the one write here that never trusts the route's guard alone
     if (!isStaff(actor)) throw new ForbiddenException('ثبت بازپرداخت فقط با کادر عملیات است.');
     const orderId = requireId(orderIdInput, 'سفارش');
@@ -239,33 +239,47 @@ export class CancellationsService {
     const fundedBy = body?.fundedBy === undefined || body.fundedBy === '' ? 'PLATFORM' : String(body.fundedBy);
     if (!REFUND_PARTIES.includes(fundedBy)) throw new BadRequestException('طرف پرداخت‌کننده بازپرداخت معتبر نیست.');
     if (amount > 0 && amount > REFUND_MAX) throw new BadRequestException('مبلغ بازپرداخت خارج از محدودهٔ مجاز است.');
+    const requestKey = requireId(body.requestKey, 'شناسهٔ درخواست بازپرداخت');
     const kind = amount > 0 ? 'REFUND' : 'CORRECTION';
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
+      // Lock in a separate statement: a waiting SELECT with subqueries can otherwise
+      // see a snapshot from before the previous refund committed.
+      const locked = await client.query(`SELECT id FROM orders WHERE id=$1 FOR UPDATE`, [orderId]);
+      if (!locked.rowCount) throw new NotFoundException('سفارش پیدا نشد.');
+      const prior = await client.query(`SELECT amount_rial,reason,funded_by FROM order_refunds WHERE order_id=$1 AND request_key=$2`, [orderId, requestKey]);
       const found = await client.query(
         `SELECT o.id,o.status,o.customer_id,o.payment_status AS "paymentStatus",
                 COALESCE((SELECT cc.amount_rial FROM cash_collections cc WHERE cc.order_id=o.id),0)::bigint AS "collectedRial",
-                COALESCE((SELECT SUM(r.amount_rial) FROM order_refunds r WHERE r.order_id=o.id),0)::bigint AS "refundedRial"
-         FROM orders o WHERE o.id=$1 FOR UPDATE OF o`, [orderId],
+                COALESCE((SELECT SUM(r.amount_rial) FROM order_refunds r WHERE r.order_id=o.id),0)::bigint AS "refundedRial",
+                COALESCE((SELECT SUM(r.amount_rial) FROM order_refunds r WHERE r.order_id=o.id AND r.destination='WALLET'),0)::bigint AS "walletRefundedRial"
+         FROM orders o WHERE o.id=$1`, [orderId],
       );
       if (!found.rowCount) throw new NotFoundException('سفارش پیدا نشد.');
-      const order = found.rows[0] as { id: string; status: string; customer_id: string; paymentStatus: string; collectedRial: string; refundedRial: string };
+      const order = found.rows[0] as { id: string; status: string; customer_id: string; paymentStatus: string; collectedRial: string; refundedRial: string; walletRefundedRial: string };
       const collected = BigInt(order.collectedRial);
       const refunded = BigInt(order.refundedRial);
+      if (prior.rows.length) {
+        const row = prior.rows[0] as { amount_rial: string; reason: string; funded_by: string };
+        if (BigInt(row.amount_rial) !== BigInt(amount) || row.reason !== text || row.funded_by !== fundedBy) throw new ConflictException('این شناسه برای بازپرداخت دیگری استفاده شده است.');
+        await client.query('COMMIT');
+        return { orderId, amountRial: amount, kind, fundedBy, paymentStatus: order.paymentStatus, refundedRial: refunded.toString(), refundableRial: (collected - refunded > 0n ? collected - refunded : 0n).toString(), duplicate: true };
+      }
       if (collected === 0n) throw new ConflictException('وجهی از مشتری دریافت نشده که بخواهد بازپرداخت شود.');
       if (kind === 'REFUND' && BigInt(amount) > collected - refunded) {
         throw new ConflictException(`سقف بازپرداخت این سفارش ${collected - refunded > 0n ? (collected - refunded).toString() : '0'} ریال است.`);
       }
       if (kind === 'CORRECTION' && -BigInt(amount) > refunded) throw new ConflictException('جمع سوابق بازپرداخت نمی‌تواند منفی شود.');
-      await client.query(`INSERT INTO order_refunds(order_id,amount_rial,kind,funded_by,reason,created_by) VALUES($1,$2,$3,$4,$5,$6)`, [orderId, amount, kind, fundedBy, text, actor.sub]);
+      if (kind === 'CORRECTION' && -BigInt(amount) > BigInt(order.walletRefundedRial)) throw new ConflictException('اصلاح بیش از بازپرداخت ثبت‌شده در کیف پول این سفارش است؛ بازپرداخت‌های قدیمی خارج از کیف پول باید جداگانه بررسی شوند.');
+      await client.query(`INSERT INTO order_refunds(order_id,amount_rial,kind,funded_by,reason,created_by,destination,request_key) VALUES($1,$2,$3,$4,$5,$6,'WALLET',$7)`, [orderId, amount, kind, fundedBy, text, actor.sub, requestKey]);
       const next = refunded + BigInt(amount);
       // the payment status is derived from the ledger, so it cannot say REFUNDED while money is still owed
       const paymentStatus = next >= collected ? 'REFUNDED' : 'PAID';
       await client.query(`UPDATE orders SET payment_status=$2,updated_at=now() WHERE id=$1`, [orderId, paymentStatus]);
-      await writeAudit(client, actor.sub, 'ORDER_REFUNDED', orderId, { amountRial: amount, kind, fundedBy, reason: text, refundedRial: next.toString(), collectedRial: collected.toString(), paymentStatus });
+      await writeAudit(client, actor.sub, 'ORDER_REFUNDED', orderId, { amountRial: amount, kind, fundedBy, destination: 'WALLET', reason: text, refundedRial: next.toString(), collectedRial: collected.toString(), paymentStatus });
       await notify(client, order.customer_id, 'ORDER_REFUNDED', kind === 'REFUND' ? 'بازپرداخت ثبت شد' : 'اصلاح بازپرداخت ثبت شد',
-        `${new Intl.NumberFormat('fa-IR').format(Math.abs(amount))} ریال · ${text}`.slice(0, 500), { orderId, amountRial: amount, kind });
+        `${new Intl.NumberFormat('fa-IR').format(Math.abs(amount))} ریال · ${kind === 'REFUND' ? 'اعتبار کیف پول' : 'اصلاح اعتبار کیف پول'} · ${text}`.slice(0, 500), { orderId, amountRial: amount, kind });
       await client.query('COMMIT');
       return { orderId, amountRial: amount, kind, fundedBy, paymentStatus, refundedRial: next.toString(), refundableRial: (collected - next > 0n ? collected - next : 0n).toString() };
     } catch (error) {

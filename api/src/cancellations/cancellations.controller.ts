@@ -42,7 +42,7 @@ export class CancellationsController {
   @Post('orders/:orderId/refunds')
   @UseGuards(RolesGuard)
   @Roles('SUPER_ADMIN', 'OPERATIONS_MANAGER')
-  recordRefund(@Req() req: AuthedRequest, @Param('orderId') orderId: string, @Body() body: { amountRial?: unknown; reason?: unknown; fundedBy?: unknown }) {
+  recordRefund(@Req() req: AuthedRequest, @Param('orderId') orderId: string, @Body() body: { amountRial?: unknown; reason?: unknown; fundedBy?: unknown; requestKey?: unknown }) {
     return this.cancellations.recordRefund(principal(req), orderId, body ?? {});
   }
 }

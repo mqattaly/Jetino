@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
@@ -13,6 +14,7 @@ import { DeliveryService } from '../delivery/delivery.service';
 import { AdminAuditService } from '../admin/admin-audit.service';
 import { FeedbackService } from '../support/feedback.service';
 import { SupportService } from '../support/support.service';
+import { WalletService } from '../wallet/wallet.service';
 import { CancellationsService } from '../cancellations/cancellations.service';
 import { NotificationDeliveryService } from '../notifications/notification-delivery.service';
 import { notify } from '../notifications/notifications.util';
@@ -460,20 +462,44 @@ suite('cash order flow against PostgreSQL', () => {
     const collected = BigInt((await rows(`SELECT amount_rial FROM cash_collections WHERE order_id=$1`, [paid]))[0].amount_rial as string);
     const half = Number(collected / 2n);
     assert.equal((await cancellations.refunds(customer, paid)).refundedRial, '0');
-    await assert.rejects(cancellations.recordRefund(shop, paid, { amountRial: 1000, reason: 'کسب‌وکار به خودش refund می‌دهد' }), /فقط با کادر عملیات/);
-    const first = await cancellations.recordRefund(staff, paid, { amountRial: half, reason: 'یک بسته از دو بسته نرسید', fundedBy: 'BUSINESS' });
+    await assert.rejects(cancellations.recordRefund(shop, paid, { requestKey: randomUUID(), amountRial: 1000, reason: 'کسب‌وکار به خودش refund می‌دهد' }), /فقط با کادر عملیات/);
+    const wallet = new WalletService(pool);
+    const firstRequest = { requestKey: randomUUID(), amountRial: half, reason: 'یک بسته از دو بسته نرسید', fundedBy: 'BUSINESS' };
+    const first = await cancellations.recordRefund(staff, paid, firstRequest);
+    assert.equal((await cancellations.recordRefund(staff, paid, firstRequest)).duplicate, true);
+    await assert.rejects(cancellations.recordRefund(staff, paid, {...firstRequest, amountRial: half-1}), /شناسه/);
+    assert.equal((await wallet.mine(customer)).balanceRial, String(half));
+    assert.deepEqual(await wallet.mine({sub: uuids.stranger}), {balanceRial:'0',items:[]});
+    await assert.rejects(cancellations.recordRefund(staff, order.id, {requestKey: randomUUID(), amountRial: 1, reason:'وجهی وصول نشده است'}), /وجهی از مشتری دریافت نشده/);
     assert.deepEqual({ status: first.paymentStatus, refundable: first.refundableRial }, { status: 'PAID', refundable: String(collected - BigInt(half)) }, 'a partial refund leaves the order owed money');
-    await assert.rejects(cancellations.recordRefund(staff, paid, { amountRial: half + 1, reason: 'بیش از باقی‌مانده' }), new RegExp(`سقف بازپرداخت این سفارش ${collected - BigInt(half)} ریال است`));
-    const cleared = await cancellations.recordRefund(staff, paid, { amountRial: half, reason: 'بستهٔ دوم هم نرسید' });
+    await assert.rejects(cancellations.recordRefund(staff, paid, { requestKey: randomUUID(), amountRial: half + 1, reason: 'بیش از باقی‌مانده' }), new RegExp(`سقف بازپرداخت این سفارش ${collected - BigInt(half)} ریال است`));
+    const cleared = await cancellations.recordRefund(staff, paid, { requestKey: randomUUID(), amountRial: half, reason: 'بستهٔ دوم هم نرسید' });
     assert.equal(cleared.paymentStatus, 'REFUNDED');
     assert.equal((await rows(`SELECT payment_status FROM orders WHERE id=$1`, [paid]))[0].payment_status, 'REFUNDED');
-    await assert.rejects(cancellations.recordRefund(staff, paid, { amountRial: 1, reason: 'چیزی نمانده' }), /سقف بازپرداخت این سفارش 0 ریال است/);
-    const clawed = await cancellations.recordRefund(staff, paid, { amountRial: -500000, reason: 'بستهٔ دوم در واقع رسید', fundedBy: 'DRIVER' });
+    await assert.rejects(cancellations.recordRefund(staff, paid, { requestKey: randomUUID(), amountRial: 1, reason: 'چیزی نمانده' }), /سقف بازپرداخت این سفارش 0 ریال است/);
+    const clawed = await cancellations.recordRefund(staff, paid, { requestKey: randomUUID(), amountRial: -500000, reason: 'بستهٔ دوم در واقع رسید', fundedBy: 'DRIVER' });
     assert.deepEqual({ kind: clawed.kind, status: clawed.paymentStatus, refundable: clawed.refundableRial }, { kind: 'CORRECTION', status: 'PAID', refundable: '500000' }, 'a mistake is answered by another row, never by editing the first');
     assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM order_refunds WHERE order_id=$1`, [paid]))[0].c, 3);
+    const walletResult = await wallet.mine(customer);
+    assert.equal(walletResult.balanceRial, String(collected-500000n));
+    assert.equal(walletResult.items.length, 3);
+    assert.equal(walletResult.items.filter(item => item.kind === 'CORRECTION')[0].amountRial, '-500000');
     assert.equal((await rows(`SELECT COUNT(*)::int AS c FROM notifications WHERE user_id=$1 AND event_type='ORDER_REFUNDED'`, [uuids.customer]))[0].c, 3, 'every ledger row is announced');
     await assert.rejects(pool.query(`INSERT INTO order_refunds(order_id,amount_rial,kind,funded_by,reason,created_by) VALUES($1,5000,'CORRECTION','PLATFORM','منفی باید منفی باشد',$2)`, [paid, uuids.admin]), /violates check constraint/);
     await assert.rejects(pool.query(`INSERT INTO order_refunds(order_id,amount_rial,kind,funded_by,reason,created_by) VALUES($1,0,'REFUND','PLATFORM','صفر معنا ندارد',$2)`, [paid, uuids.admin]), /violates check constraint/);
+
+    // Two independent database connections race on the same order. The lock must
+    // be acquired before taking the snapshot used for refund totals.
+    const same = {requestKey: randomUUID(), amountRial: 100000, reason: 'آزمون تکرار بازپرداخت'};
+    const retried = await Promise.all([cancellations.recordRefund(staff, paid, same), cancellations.recordRefund(staff, paid, same)]);
+    assert.equal(retried.filter(result => result.duplicate).length, 1);
+    const race = await Promise.allSettled([
+      cancellations.recordRefund(staff, paid, {requestKey: randomUUID(), amountRial: 300000, reason: 'بازپرداخت همزمان اول'}),
+      cancellations.recordRefund(staff, paid, {requestKey: randomUUID(), amountRial: 300000, reason: 'بازپرداخت همزمان دوم'}),
+    ]);
+    assert.equal(race.filter(result => result.status === 'fulfilled').length, 1);
+    assert.equal((await cancellations.refunds(customer, paid)).refundableRial, '100000');
+    assert.equal((await wallet.mine(customer)).balanceRial, String(collected-100000n));
 
     const widened = await cancellations.setPolicy(staff, { autoCancelStatuses: ['PENDING_BUSINESS', 'CONFIRMED'], windowMinutes: 30 });
     assert.deepEqual(widened, { autoCancelStatuses: ['PENDING_BUSINESS', 'CONFIRMED'], windowMinutes: 30 });

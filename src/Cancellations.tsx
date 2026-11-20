@@ -10,7 +10,7 @@ type Policy = { autoCancelStatuses: string[]; windowMinutes: number };
 type CancelRequest = { id:string; orderId:string; orderStatus:string; totalRial:string; paymentStatus:string; reason:string; outcome:string; note:string|null; createdAt:string; decidedAt:string|null; decidedBy:string|null; requesterName?:string|null; requesterTail?:string|null; refundCount?:number };
 type OrderView = { order:{id:string;status:string;paymentStatus:string;totalRial:string}; policy:Policy; requests:CancelRequest[]; selfServe:boolean; cancellable:boolean; awaitingAnswer:boolean };
 type Queue = { items:CancelRequest[]; counts:Record<string,number>; totalMatches:number; limit:number; offset:number };
-type Ledger = { orderId:string; collectedRial:string; refundedRial:string; refundableRial:string; items:Array<{ id:string; amountRial:string; kind:string; fundedBy:string; reason:string; createdAt:string; actorName:string }> };
+type Ledger = { orderId:string; collectedRial:string; refundedRial:string; refundableRial:string; items:Array<{ id:string; amountRial:string; kind:string; destination:string; fundedBy:string; reason:string; createdAt:string; actorName:string }> };
 
 const OUTCOMES = ['PENDING', 'ACCEPTED', 'REJECTED', 'VOIDED'] as const;
 /** Mirrors POLICY_OPTIONS in the API; the route test fails if the two lists drift apart. */
@@ -27,7 +27,7 @@ const shortId=(value:string|null)=>value?value.slice(0,8).toUpperCase():'—';
 async function requestJson<T>(path:string, token:string, init?:RequestInit):Promise<T>{
   const response=await fetch(path,{...init,headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`,...(init?.headers||{})}});
   const data=((await response.json().catch(()=>({})))??{}) as T&{message?:string};
-  if(!response.ok) throw new Error(typeof data.message==='string'?data.message:`خطا (${response.status})`);
+  if(!response.ok){ const error=new Error(typeof data.message==='string'?data.message:`خطا (${response.status})`) as Error&{status?:number}; error.status=response.status; throw error; }
   return data;
 }
 
@@ -120,8 +120,11 @@ export function CancellationBoard({token}:{token:string}){
   };
 
   const openLedger=async(orderId:string)=>{
-    setLedger({orderId,data:null,amount:'',reason:'',fundedBy:'PLATFORM',busy:true});
-    try{ setLedger({orderId,data:await requestJson<Ledger>(`/api/v1/cancellations/orders/${orderId}/refunds`,token),amount:'',reason:'',fundedBy:'PLATFORM',busy:false}); }
+    const pendingRaw=sessionStorage.getItem(`jetino_refund_pending_${orderId}`);
+    const pending=pendingRaw?JSON.parse(pendingRaw) as {amountRial:number;reason:string;fundedBy:string;requestKey:string}:null;
+    const form={amount:pending?String(pending.amountRial):'',reason:pending?.reason||'',fundedBy:pending?.fundedBy||'PLATFORM'};
+    setLedger({orderId,data:null,...form,busy:true});
+    try{ setLedger({orderId,data:await requestJson<Ledger>(`/api/v1/cancellations/orders/${orderId}/refunds`,token),...form,busy:false}); }
     catch(e){ setError((e as Error).message); setLedger(null); }
   };
 
@@ -129,11 +132,19 @@ export function CancellationBoard({token}:{token:string}){
     if(!ledger) return;
     setLedger({...ledger,busy:true}); setError('');
     try{
-      await requestJson(`/api/v1/cancellations/orders/${ledger.orderId}/refunds`,token,{method:'POST',body:JSON.stringify({amountRial:Number(ledger.amount||0),reason:ledger.reason,fundedBy:ledger.fundedBy})});
-      setNotice('ردیف بازپرداخت در دفتر ثبت شد.');
+      const storageKey=`jetino_refund_pending_${ledger.orderId}`;
+      const previous=sessionStorage.getItem(storageKey);
+      const pending=previous?JSON.parse(previous) as {amountRial:number;reason:string;fundedBy:string;requestKey:string}:null;
+      const amountRial=Number(ledger.amount||0);
+      if(pending&&(pending.amountRial!==amountRial||pending.reason!==ledger.reason||pending.fundedBy!==ledger.fundedBy)) throw new Error('نتیجهٔ درخواست قبلی نامشخص است؛ ابتدا همان مبلغ و دلیل و طرف پرداخت‌کننده را دوباره ثبت و بررسی کنید.');
+      const payload=pending||{amountRial,reason:ledger.reason,fundedBy:ledger.fundedBy,requestKey:crypto.randomUUID()};
+      sessionStorage.setItem(storageKey,JSON.stringify(payload));
+      await requestJson(`/api/v1/cancellations/orders/${ledger.orderId}/refunds`,token,{method:'POST',body:JSON.stringify(payload)});
+      sessionStorage.removeItem(storageKey);
+      setNotice('ردیف کیف پول ثبت یا تأیید شد.');
       await openLedger(ledger.orderId);
       await load(tab,applied,page);
-    }catch(e){ setError((e as Error).message); setLedger({...ledger,busy:false}); }
+    }catch(e){ const status=(e as Error&{status?:number}).status; if(status===400||status===409) sessionStorage.removeItem(`jetino_refund_pending_${ledger.orderId}`); setError((e as Error).message); setLedger({...ledger,busy:false}); }
   };
 
   const total=queue?.totalMatches??0;
@@ -164,13 +175,13 @@ export function CancellationBoard({token}:{token:string}){
       <button className="close" onClick={()=>setLedger(null)}><X size={18}/></button>
       <h2>دفتر بازپرداخت · <span dir="ltr">{shortId(ledger.orderId)}</span></h2>
       {ledger.data&&<div className="ledger-totals"><div><small>وصول‌شده</small><b>{money(ledger.data.collectedRial)}</b></div><div><small>بازگردانده‌شده</small><b>{money(ledger.data.refundedRial)}</b></div><div><small>جا مانده</small><b>{money(ledger.data.refundableRial)}</b></div></div>}
-      {ledger.data&&ledger.data.items.length===0?<p className="queue-empty">هنوز ردیفی ثبت نشده است.</p>:<ul className="ledger-rows">{ledger.data?.items.map(row=><li key={row.id}><b className={row.kind==='CORRECTION'?'negative':''}>{row.kind==='CORRECTION'?'-':''}{money(row.amountRial.replace('-',''))}</b><span>{row.reason}</span><small>{row.fundedBy==='PLATFORM'?'پلتفرم':row.fundedBy==='BUSINESS'?'کسب‌وکار':'پیک'} · {row.actorName} · {dateTime(row.createdAt)}</small></li>)}</ul>}
+      {ledger.data&&ledger.data.items.length===0?<p className="queue-empty">هنوز ردیفی ثبت نشده است.</p>:<ul className="ledger-rows">{ledger.data?.items.map(row=><li key={row.id}><b className={row.kind==='CORRECTION'?'negative':''}>{row.kind==='CORRECTION'?'-':''}{money(row.amountRial.replace('-',''))}</b><span>{row.reason}</span><small>{row.fundedBy==='PLATFORM'?'پلتفرم':row.fundedBy==='BUSINESS'?'کسب‌وکار':'پیک'} · {row.destination==='WALLET'?'کیف پول':'قدیمی؛ مقصد نامشخص'} · {row.actorName} · {dateTime(row.createdAt)}</small></li>)}</ul>}
       <div className="ledger-form">
-        <label><span>مبلغ (ریال)</span><input value={ledger.amount} onChange={e=>setLedger({...ledger,amount:e.target.value.replace(/[^\d]/g,'')})} inputMode="numeric" aria-label="مبلغ بازپرداخت به ریال"/></label>
+        <label><span>مبلغ (ریال)</span><input value={ledger.amount} onChange={e=>setLedger({...ledger,amount:e.target.value.replace(/[^\d-]/g,'').replace(/(?!^)-/g,'')})} inputMode="numeric" aria-label="مبلغ بازپرداخت به ریال"/></label>
         <label><span>بابت</span><select value={ledger.fundedBy} onChange={e=>setLedger({...ledger,fundedBy:e.target.value})} aria-label="طرف پرداخت‌کننده">{REFUND_PARTIES.map(party=><option key={party.value} value={party.value}>{party.label}</option>)}</select></label>
         <label className="wide"><span>دلیل</span><input value={ledger.reason} onChange={e=>setLedger({...ledger,reason:e.target.value})} maxLength={300} aria-label="دلیل بازپرداخت"/></label>
         <button className="primary-button" disabled={ledger.busy||!ledger.amount||!ledger.reason} onClick={()=>void addRefund()}>{ledger.busy?'در حال ثبت…':'ثبت ردیف'}</button>
-        <small>بازپرداخت‌ها فقط افزوده می‌شوند؛ برای اصلاح، یک ردیف منفی ثبت کنید.</small>
+        <small>بازپرداخت مثبت به کیف پول مشتری می‌رود و سقف آن وجه وصول‌شده است؛ برای اصلاح اعتبار کیف پول همین سفارش مبلغ منفی بنویسید. بازپرداخت‌های قدیمی مقصد مشخصی ندارند و خودکار به کیف پول اضافه نشده‌اند. اگر پاسخ ثبت نامشخص بود، همان درخواست را دوباره ارسال کنید.</small>
       </div>
     </section></div>}
     <div className="policy-editor">

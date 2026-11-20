@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
@@ -144,7 +145,7 @@ describe('CancellationsService.decideRequest', () => {
 
 describe('CancellationsService refund ledger', () => {
   const totals = (collectedRial: string, refundedRial: string, extra: Record<string, unknown> = {}) => ({
-    rows: [{ id: orderId, status: 'CANCELLED', paymentStatus: 'PAID', totalRial: '150000', collectedRial, refundedRial, ...extra }],
+    rows: [{ id: orderId, status: 'CANCELLED', paymentStatus: 'PAID', totalRial: '150000', collectedRial, refundedRial, walletRefundedRial: refundedRial, ...extra }],
     rowCount: 1,
   });
 
@@ -160,20 +161,21 @@ describe('CancellationsService refund ledger', () => {
 
   it('refuses a refund nobody authorised or an amount that is not money', async () => {
     const { service, calls } = harness(() => { throw new Error('no statement may run'); });
-    await assert.rejects(service.recordRefund(stranger, orderId, { amountRial: 1000, reason: 'بازپرداخت مشتری' }), ForbiddenException);
-    await assert.rejects(service.recordRefund(staff, orderId, { amountRial: 0, reason: 'صفر' }), /غیرصفر/);
-    await assert.rejects(service.recordRefund(staff, orderId, { amountRial: 1e13, reason: 'زیاد' }), /محدودهٔ مجاز/);
-    await assert.rejects(service.recordRefund(staff, orderId, { amountRial: 1000, reason: 'بدون طرف' , fundedBy: 'BANK' }), /طرف پرداخت‌کننده/);
-    await assert.rejects(service.recordRefund(staff, orderId, { amountRial: 1000, reason: 'خطا' }), /دلیل بازپرداخت/);
+    await assert.rejects(service.recordRefund(stranger, orderId, { requestKey: randomUUID(), amountRial: 1000, reason: 'بازپرداخت مشتری' }), ForbiddenException);
+    await assert.rejects(service.recordRefund(staff, orderId, { requestKey: randomUUID(), amountRial: 0, reason: 'صفر' }), /غیرصفر/);
+    await assert.rejects(service.recordRefund(staff, orderId, { requestKey: randomUUID(), amountRial: 1e13, reason: 'زیاد' }), /محدودهٔ مجاز/);
+    await assert.rejects(service.recordRefund(staff, orderId, { requestKey: randomUUID(), amountRial: 1000, reason: 'بدون طرف' , fundedBy: 'BANK' }), /طرف پرداخت‌کننده/);
+    await assert.rejects(service.recordRefund(staff, orderId, { requestKey: randomUUID(), amountRial: 1000, reason: 'خطا' }), /دلیل بازپرداخت/);
     assert.equal(calls.length, 0);
   });
 
   it('writes one row, keeps the total inside what was collected and derives the payment status', async () => {
     const { service, calls, notices } = harness(sql => (sql.includes('COALESCE((SELECT cc.amount_rial') ? totals('150000', '100000') : null));
-    const result = await service.recordRefund(staff, orderId, { amountRial: 50000, reason: 'بسته دوم اصلاً نرسید', fundedBy: 'BUSINESS' });
+    const result = await service.recordRefund(staff, orderId, { requestKey: randomUUID(), amountRial: 50000, reason: 'بسته دوم اصلاً نرسید', fundedBy: 'BUSINESS' });
     assert.deepEqual(result, { orderId, amountRial: 50000, kind: 'REFUND', fundedBy: 'BUSINESS', paymentStatus: 'REFUNDED', refundedRial: '150000', refundableRial: '0' });
     const insert = calls.find(call => call.sql.startsWith('INSERT INTO order_refunds'))!;
-    assert.deepEqual(insert.values, [orderId, 50000, 'REFUND', 'BUSINESS', 'بسته دوم اصلاً نرسید', staff.sub]);
+    assert.match(insert.sql, /'WALLET'/);
+    assert.deepEqual(insert.values.slice(0, 6), [orderId, 50000, 'REFUND', 'BUSINESS', 'بسته دوم اصلاً نرسید', staff.sub]);
     assert.deepEqual(calls.find(call => call.sql.startsWith('UPDATE orders SET payment_status'))!.values, [orderId, 'REFUNDED']);
     assert.equal(notices().at(-1)?.values?.[1], 'ORDER_REFUNDED');
     assert.match(String(notices().at(-1)?.values?.[3]), /۵۰٬۰۰۰ ریال/);
@@ -182,20 +184,27 @@ describe('CancellationsService refund ledger', () => {
 
   it('will not hand back money nobody collected, nor more than the ledger holds', async () => {
     const nothing = harness(sql => (sql.includes('COALESCE((SELECT cc.amount_rial') ? totals('0', '0') : null));
-    await assert.rejects(nothing.service.recordRefund(staff, orderId, { amountRial: 5000, reason: 'صفر بوده' }), ConflictException);
+    await assert.rejects(nothing.service.recordRefund(staff, orderId, { requestKey: randomUUID(), amountRial: 5000, reason: 'صفر بوده' }), ConflictException);
     assert.ok(!nothing.calls.some(call => call.sql.startsWith('INSERT INTO order_refunds')));
 
     const over = harness(sql => (sql.includes('COALESCE((SELECT cc.amount_rial') ? totals('150000', '100000') : null));
-    await assert.rejects(over.service.recordRefund(staff, orderId, { amountRial: 60000, reason: 'بیش از باقی‌مانده' }), /سقف بازپرداخت این سفارش 50000 ریال است/);
+    await assert.rejects(over.service.recordRefund(staff, orderId, { requestKey: randomUUID(), amountRial: 60000, reason: 'بیش از باقی‌مانده' }), /سقف بازپرداخت این سفارش 50000 ریال است/);
 
     const clawback = harness(sql => (sql.includes('COALESCE((SELECT cc.amount_rial') ? totals('150000', '10000') : null));
-    await assert.rejects(clawback.service.recordRefund(staff, orderId, { amountRial: -20000, reason: 'اشتباه دوباره ثبت شد' }), /نمی‌تواند منفی شود/);
+    await assert.rejects(clawback.service.recordRefund(staff, orderId, { requestKey: randomUUID(), amountRial: -20000, reason: 'اشتباه دوباره ثبت شد' }), /نمی‌تواند منفی شود/);
     assert.equal(clawback.calls.at(-1)?.sql, 'ROLLBACK', 'a rejected ledger row rolls the transaction back');
+  });
+
+  it('never claws back historical refunds that were not credited to the wallet', async () => {
+    const legacy = harness(sql => (sql.includes('COALESCE((SELECT cc.amount_rial') ? totals('150000', '100000', { walletRefundedRial: '0' }) : null));
+    await assert.rejects(legacy.service.recordRefund(staff, orderId, { requestKey: randomUUID(), amountRial: -5000, reason: 'اصلاح بازپرداخت قبلی' }), /بازپرداخت‌های قدیمی/);
+    assert.ok(!legacy.calls.some(call => call.sql.startsWith('INSERT INTO order_refunds')));
+    assert.equal(legacy.calls.at(-1)?.sql, 'ROLLBACK');
   });
 
   it('keeps a correction as a second row instead of editing the first one', async () => {
     const { service, calls } = harness(sql => (sql.includes('COALESCE((SELECT cc.amount_rial') ? totals('150000', '150000') : null));
-    const result = await service.recordRefund(staff, orderId, { amountRial: -5000, reason: 'مبلغ اشتباه وارد شده بود' });
+    const result = await service.recordRefund(staff, orderId, { requestKey: randomUUID(), amountRial: -5000, reason: 'مبلغ اشتباه وارد شده بود' });
     assert.equal(result.kind, 'CORRECTION');
     assert.deepEqual(result.refundedRial, '145000');
     assert.equal(result.paymentStatus, 'PAID', 'money is owed again, so the order is not refunded any more');
