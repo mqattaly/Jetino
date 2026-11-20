@@ -47,23 +47,39 @@ export class BusinessesService {
     return { ...result.rows[0], categories: categories.rows };
   }
 
-  async create(user: Principal, body: { name?: unknown; description?: unknown; regionSlug?: unknown }) {
+  async create(user: Principal, body: { name?: unknown; description?: unknown; regionSlug?: unknown; addressText?: unknown; contactPhone?: unknown; workingHours?: unknown; applicationKey?: unknown }, auditActor = user.sub) {
     const name = typeof body?.name === 'string' ? body.name.trim() : '';
     const description = typeof body?.description === 'string' ? body.description.trim() : null;
     const regionSlug = typeof body?.regionSlug === 'string' ? body.regionSlug : 'bandar-khamir';
     if (name.length < 2 || name.length > 160) throw new BadRequestException('نام کسب‌وکار باید بین ۲ تا ۱۶۰ نویسه باشد.');
     if (description && description.length > 1000) throw new BadRequestException('توضیحات بیش از حد طولانی است.');
+    const address = typeof body?.addressText === 'string' ? body.addressText.trim() : '';
+    const rawPhone = typeof body?.contactPhone === 'string' ? body.contactPhone.trim().replace(/[\s()-]/g,'') : '';
+    const phone = /^09\d{9}$/.test(rawPhone) ? `+98${rawPhone.slice(1)}` : rawPhone;
+    const hours = typeof body?.workingHours === 'string' ? body.workingHours.trim() : '';
+    if (address.length > 500 || hours.length > 200 || (phone && !/^\+989\d{9}$/.test(phone))) throw new BadRequestException('نشانی، شمارهٔ تماس یا ساعات کاری معتبر نیست.');
+    const applicationKey = body?.applicationKey === undefined ? null : this.id(body.applicationKey, 'شناسهٔ درخواست');
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
+      const owner = await client.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [user.sub]);
+      if (!owner.rowCount) throw new NotFoundException('حساب کاربری پیدا نشد.');
+      if (applicationKey) {
+        const previous = await client.query(`SELECT b.id,b.name,b.description,b.status,b.created_at,b.address_text,b.contact_phone,b.working_hours,r.slug AS region_slug FROM businesses b JOIN regions r ON r.id=b.region_id WHERE b.owner_id=$1 AND b.application_key=$2`, [user.sub,applicationKey]);
+        if (previous.rowCount) {
+          const p = previous.rows[0];
+          if (p.name!==name || (p.description||'')!==(description||'') || (p.address_text||'')!==address || (p.contact_phone||'')!==phone || (p.working_hours||'')!==hours || p.region_slug!==regionSlug) throw new ConflictException('این شناسه برای درخواست دیگری استفاده شده است.');
+          await client.query('COMMIT'); return {id:p.id,name:p.name,description:p.description,status:p.status,created_at:p.created_at,duplicate:true};
+        }
+      }
       const region = await client.query('SELECT id FROM regions WHERE slug=$1 AND is_active=true', [regionSlug]);
       if (!region.rowCount) throw new NotFoundException('منطقهٔ فعال پیدا نشد.');
       const result = await client.query(
-        `INSERT INTO businesses(owner_id,region_id,name,description) VALUES($1,$2,$3,$4) RETURNING id,name,description,status,created_at`,
-        [user.sub, region.rows[0].id, name, description],
+        `INSERT INTO businesses(owner_id,region_id,name,description,address_text,contact_phone,working_hours,application_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,name,description,status,created_at`,
+        [user.sub, region.rows[0].id, name, description, address || null, phone || null, hours || null, applicationKey],
       );
       await client.query(`INSERT INTO user_roles(user_id,role) VALUES($1,'BUSINESS_OWNER') ON CONFLICT DO NOTHING`, [user.sub]);
-      await client.query(`INSERT INTO audit_logs(actor_id,action,entity_type,entity_id) VALUES($1,'BUSINESS_APPLICATION_CREATED','BUSINESS',$2)`, [user.sub, result.rows[0].id]);
+      await client.query(`INSERT INTO audit_logs(actor_id,action,entity_type,entity_id) VALUES($1,'BUSINESS_APPLICATION_CREATED','BUSINESS',$2)`, [auditActor, result.rows[0].id]);
       await client.query('COMMIT');
       return result.rows[0];
     } catch (error) {
@@ -74,7 +90,7 @@ export class BusinessesService {
 
   async mine(user: Principal) {
     const result = await this.pool.query(
-      `SELECT id,name,description,status,region_id,commission_bps,latitude,longitude,created_at FROM businesses WHERE owner_id=$1 ORDER BY created_at DESC`, [user.sub],
+      `SELECT id,name,description,status,region_id,commission_bps,latitude,longitude,address_text,contact_phone,working_hours,decision_note,admin_suspended,created_at FROM businesses WHERE owner_id=$1 ORDER BY created_at DESC`, [user.sub],
     );
     return result.rows;
   }
@@ -85,10 +101,11 @@ export class BusinessesService {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      const current = await client.query('SELECT status FROM businesses WHERE id=$1 AND owner_id=$2 FOR UPDATE', [businessId,user.sub]);
+      const current = await client.query('SELECT status,admin_suspended FROM businesses WHERE id=$1 AND owner_id=$2 FOR UPDATE', [businessId,user.sub]);
       if (!current.rowCount) throw new NotFoundException('کسب‌وکار پیدا نشد یا دسترسی ندارید.');
       const before = current.rows[0].status as string;
       if (before !== 'ACTIVE' && before !== 'PAUSED') throw new ConflictException('فقط کسب‌وکار تأییدشده می‌تواند سفارش‌پذیری را تغییر دهد.');
+      if (acceptingOrders && current.rows[0].admin_suspended) throw new ConflictException('فعال‌سازی این کسب‌وکار فقط توسط مدیر امکان‌پذیر است.');
       const next = acceptingOrders ? 'ACTIVE' : 'PAUSED';
       if (before !== next) {
         await client.query('UPDATE businesses SET status=$2 WHERE id=$1', [businessId,next]);

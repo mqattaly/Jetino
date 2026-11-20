@@ -32,7 +32,7 @@ export class BusinessesController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
-  create(@Req() request: AuthRequest, @Body() body: { name?: unknown; description?: unknown; regionSlug?: unknown }) {
+  create(@Req() request: AuthRequest, @Body() body: { name?: unknown; description?: unknown; regionSlug?: unknown; addressText?: unknown; contactPhone?: unknown; workingHours?: unknown; applicationKey?: unknown }) {
     return this.businesses.create(request.user, body);
   }
 

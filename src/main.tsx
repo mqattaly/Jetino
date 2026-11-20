@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import PartnerJoinApp from './PartnerJoinApp';
 import AdminApp from './AdminApp';
 import { BusinessOrdersApp, CustomerOrdersApp } from './OperationsApp';
 import DriverApp from './DriverApp';
@@ -12,7 +13,7 @@ import './style.css';
 import './theme.css';
 
 const path = window.location.pathname;
-const Root = path.startsWith('/admin') ? AdminApp : path.startsWith('/business/menu') ? BusinessMenuApp : path.startsWith('/business') ? BusinessOrdersApp : path.startsWith('/driver') ? DriverApp : path.startsWith('/notifications') ? NotificationApp : path.startsWith('/orders') ? CustomerOrdersApp : App;
+const Root = path.startsWith('/join/business') ? () => <PartnerJoinApp kind="business"/> : path.startsWith('/join/driver') ? () => <PartnerJoinApp kind="driver"/> : path.startsWith('/admin') ? AdminApp : path.startsWith('/business/menu') ? BusinessMenuApp : path.startsWith('/business') ? BusinessOrdersApp : path.startsWith('/driver') ? DriverApp : path.startsWith('/notifications') ? NotificationApp : path.startsWith('/orders') ? CustomerOrdersApp : App;
 createRoot(document.getElementById('root')!).render(<React.StrictMode><Root /></React.StrictMode>);
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {

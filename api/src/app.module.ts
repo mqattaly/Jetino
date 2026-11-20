@@ -10,8 +10,9 @@ import { DriversModule } from './drivers/drivers.module';
 import { DeliveryModule } from './delivery/delivery.module';
 import { SupportModule } from './support/support.module';
 import { CancellationsModule } from './cancellations/cancellations.module';
+import { PartnersModule } from './partners/partners.module';
 import { WalletModule } from './wallet/wallet.module';
 import { NotificationsModule } from './notifications/notifications.module';
 
-@Module({ imports: [DatabaseModule, AuthModule, BusinessesModule, AdminModule, AddressesModule, OrdersModule, DriversModule, DeliveryModule, SupportModule, CancellationsModule, NotificationsModule, WalletModule], controllers: [HealthController] })
+@Module({ imports: [DatabaseModule, AuthModule, BusinessesModule, AdminModule, AddressesModule, OrdersModule, DriversModule, DeliveryModule, SupportModule, CancellationsModule, NotificationsModule, WalletModule, PartnersModule], controllers: [HealthController] })
 export class AppModule {}

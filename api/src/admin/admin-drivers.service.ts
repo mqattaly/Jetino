@@ -1,5 +1,6 @@
 import { Inject, Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Pool } from 'pg';
+import { notify } from '../notifications/notifications.util';
 import { PG_POOL } from '../database/database.module';
 
 @Injectable()
@@ -18,5 +19,23 @@ export class AdminDriversService {
       await client.query('COMMIT');return {...driver.rows[0],phone,regionSlug};
     }catch(error:unknown){try{await client.query('ROLLBACK');}catch{/* closed */}if((error as {code?:string}).code==='23505')throw new ConflictException('این کاربر قبلاً راننده شده است.');throw error;}finally{client.release();}
   }
-  async setStatus(actor:string,id:string,status:unknown){if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))throw new BadRequestException('شناسهٔ راننده معتبر نیست.');if(status!=='ACTIVE'&&status!=='SUSPENDED')throw new BadRequestException('وضعیت راننده معتبر نیست.');const result=await this.pool.query(`UPDATE drivers SET status=$2,updated_at=now() WHERE id=$1 RETURNING id,status`,[id,status]);if(!result.rowCount)throw new NotFoundException('راننده پیدا نشد.');await this.pool.query(`INSERT INTO audit_logs(actor_id,action,entity_type,entity_id,metadata) VALUES($1,'DRIVER_STATUS_CHANGED','DRIVER',$2,$3::jsonb)`,[actor,id,JSON.stringify({status})]);return result.rows[0];}
+  async setStatus(actor:string,id:string,status:unknown){
+    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) throw new BadRequestException('شناسهٔ راننده معتبر نیست.');
+    if(status!=='ACTIVE'&&status!=='SUSPENDED') throw new BadRequestException('وضعیت راننده معتبر نیست.');
+    const client=await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const current=await client.query('SELECT id,user_id,status FROM drivers WHERE id=$1 FOR UPDATE',[id]);
+      if(!current.rowCount) throw new NotFoundException('راننده پیدا نشد.');
+      if(current.rows[0].status===status){await client.query('COMMIT');return {id,status};}
+      if(status==='SUSPENDED'){
+        const open=await client.query(`SELECT 1 FROM delivery_assignments da JOIN orders o ON o.id=da.order_id WHERE da.driver_id=$1 AND (o.status IN ('DRIVER_ASSIGNED','OUT_FOR_DELIVERY') OR (o.status='DELIVERED' AND o.payment_status='PENDING')) LIMIT 1`,[id]);
+        if(open.rowCount) throw new ConflictException('ابتدا مأموریت جاری یا وصول نقدی این راننده را تعیین تکلیف کنید.');
+      }
+      const result=await client.query(`UPDATE drivers SET status=$2,updated_at=now() WHERE id=$1 RETURNING id,status`,[id,status]);
+      await client.query(`INSERT INTO audit_logs(actor_id,action,entity_type,entity_id,metadata) VALUES($1,'DRIVER_STATUS_CHANGED','DRIVER',$2,$3::jsonb)`,[actor,id,JSON.stringify({from:current.rows[0].status,status})]);
+      await notify(client,current.rows[0].user_id,'DRIVER_STATUS_CHANGED',status==='ACTIVE'?'حساب راننده فعال شد':'حساب راننده تعلیق شد',status==='ACTIVE'?'اکنون می‌توانید از پنل راننده استفاده کنید.':'برای راهنمایی با پشتیبانی تماس بگیرید.',{driverId:id,status});
+      await client.query('COMMIT');return result.rows[0];
+    }catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;}finally{client.release();}
+  }
 }
