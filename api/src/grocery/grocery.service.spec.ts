@@ -111,6 +111,7 @@ describe('GroceryService · text shopping list', () => {
   it('accepts a bid, assigns the courier and rejects the rest', async () => {
     const { pool, statements } = fakePool([
       (sql) => sql.startsWith('SELECT id,customer_id,status') ? { rows: [{ id: listId, customer_id: customer.sub, status: 'OPEN' }], rowCount: 1 } : undefined,
+      (sql) => sql.startsWith('SELECT key,value_int,value_text') ? settingsRows() : undefined,
       (sql) => sql.startsWith('SELECT b.id,b.driver_id') ? { rows: [{ id: bidId, driver_id: driverId, amount_rial: '150000', user_id: 'driver-user' }], rowCount: 1 } : undefined,
       (sql) => sql.startsWith('SELECT g.id,g.customer_id') ? { rows: [{ id: listId, customerId: customer.sub, status: 'ASSIGNED', driverUserId: 'driver-user' }], rowCount: 1 } : undefined,
       (sql) => sql.startsWith('SELECT name,quantity') || sql.startsWith('SELECT b.id,b.amount_rial') ? { rows: [], rowCount: 0 } : undefined,
@@ -118,7 +119,8 @@ describe('GroceryService · text shopping list', () => {
     const service = new GroceryService(pool, undefined as never);
     await service.acceptBid(customer, listId, bidId);
     const assign = statements.find(entry => entry.sql.startsWith('UPDATE grocery_lists SET driver_id'))!;
-    assert.deepEqual(assign.values, [listId, driverId, bidId, '150000']);
+    assert.deepEqual(assign.values, [listId, driverId, bidId, '150000', '15']);
+    assert.match(assign.sql, /fee_deadline_at=now\(\)/);
     const rejected = statements.find(entry => entry.sql.startsWith('UPDATE grocery_bids SET status=\'REJECTED\''))!;
     assert.match(rejected.sql, /status='REJECTED'/);
     assert.deepEqual(rejected.values, [listId, bidId]);
@@ -215,6 +217,147 @@ describe('GroceryService · text shopping list', () => {
     ]);
     const service = new GroceryService(pool, undefined as never);
     await assert.rejects(service.cancel(customer, listId), ConflictException);
+  });
+
+
+  it('does not let the courier invoice before the prepaid fee is confirmed', async () => {
+    const { pool } = fakePool([
+      (sql) => sql.startsWith('SELECT d.id,d.region_id') ? driverRow : undefined,
+      (sql) => sql.startsWith('SELECT value_int FROM platform_settings') ? gateOff : undefined,
+      (sql) => sql.startsWith('SELECT id,customer_id,driver_id,status') ? {
+        rows: [{ id: listId, customer_id: customer.sub, driver_id: driverId, status: 'ASSIGNED', fee_confirmed_at: null }], rowCount: 1,
+      } : undefined,
+    ]);
+    const service = new GroceryService(pool, undefined as never);
+    await assert.rejects(service.submitInvoice({ sub: 'driver-user' }, listId, { amountRial: 120_000, storeCard: '6037000000000000', storeHolder: 'هایپر مرکزی' }), ConflictException);
+  });
+
+  it('does not let the courier start shopping before the fee is confirmed', async () => {
+    const { pool } = fakePool([
+      (sql) => sql.startsWith('SELECT d.id,d.region_id') ? driverRow : undefined,
+      (sql) => sql.startsWith('SELECT value_int FROM platform_settings') ? gateOff : undefined,
+      (sql) => sql.startsWith('SELECT id,customer_id,driver_id,status,fee_rial') ? {
+        rows: [{ id: listId, customer_id: customer.sub, driver_id: driverId, status: 'ASSIGNED', fee_rial: '150000', fee_confirmed_at: null, refunded_at: null }], rowCount: 1,
+      } : undefined,
+    ]);
+    const service = new GroceryService(pool, undefined as never);
+    await assert.rejects(service.transition({ sub: 'driver-user' }, listId, 'SHOPPING'), ConflictException);
+  });
+
+  it('refuses the online fee payment until a gateway is connected', async () => {
+    const { pool } = fakePool([(sql) => sql.startsWith('SELECT key,value_int,value_text') ? settingsRows() : undefined]);
+    const service = new GroceryService(pool, undefined as never);
+    await assert.rejects(service.declareFeePayment(customer, listId, { method: 'ONLINE', receiptUrl: 'https://example.com/r.jpg' }), ConflictException);
+  });
+
+  it('stores the prepaid fee receipt and notifies staff', async () => {
+    const { pool, statements } = fakePool([
+      (sql) => sql.startsWith('SELECT key,value_int,value_text') ? settingsRows({ mode: 'CARD_TO_CARD' }) : undefined,
+      (sql) => sql.startsWith('SELECT g.id,g.customer_id,g.status') ? {
+        rows: [{ customer_id: customer.sub, status: 'ASSIGNED', fee_rial: '150000', fee_confirmed_at: null, driver_user: 'driver-user' }], rowCount: 1,
+      } : undefined,
+      (sql) => sql.startsWith('SELECT DISTINCT ur.user_id') ? { rows: [{ user_id: 'staff-1' }], rowCount: 1 } : undefined,
+      (sql) => sql.startsWith('SELECT g.id,g.customer_id AS "customerId"') ? { rows: [{ id: listId, customerId: customer.sub, status: 'ASSIGNED', driverUserId: 'driver-user' }], rowCount: 1 } : undefined,
+      (sql) => sql.startsWith('SELECT name,quantity') || sql.startsWith('SELECT b.id,b.amount_rial') ? { rows: [], rowCount: 0 } : undefined,
+    ]);
+    const service = new GroceryService(pool, undefined as never);
+    await service.declareFeePayment(customer, listId, { method: 'CARD_TO_CARD', receiptUrl: 'https://example.com/r.jpg', reference: '123456' });
+    const update = statements.find(entry => entry.sql.startsWith('UPDATE grocery_lists SET fee_payment_method'))!;
+    assert.equal(update.values[1], 'CARD_TO_CARD');
+    assert.equal(update.values[3], '123456');
+    const staffNote = statements.find(entry => entry.sql.startsWith('INSERT INTO notifications(user_id,event_type'))!;
+    assert.equal(staffNote.values[0], 'staff-1');
+  });
+
+  it('only staff may confirm the prepaid fee', async () => {
+    const service = new GroceryService({ connect: () => { throw new Error('unexpected connection'); } } as never, undefined as never);
+    await assert.rejects(service.confirmFeePayment(customer, listId), ForbiddenException);
+  });
+
+  it('marks the fee confirmed for staff and unlocks the shopping step', async () => {
+    const { pool, statements } = fakePool([
+      (sql) => sql.startsWith('SELECT g.id,g.customer_id,g.status') ? {
+        rows: [{ customer_id: customer.sub, status: 'ASSIGNED', fee_rial: '150000', fee_declared_at: new Date(), fee_confirmed_at: null, driver_user: 'driver-user' }], rowCount: 1,
+      } : undefined,
+      (sql) => sql.startsWith('SELECT g.id,g.customer_id') ? { rows: [{ id: listId, customerId: customer.sub, status: 'ASSIGNED', driverUserId: 'driver-user', feeConfirmedAt: new Date() }], rowCount: 1 } : undefined,
+      (sql) => sql.startsWith('SELECT name,quantity') || sql.startsWith('SELECT b.id,b.amount_rial') ? { rows: [], rowCount: 0 } : undefined,
+    ]);
+    const service = new GroceryService(pool, undefined as never);
+    await service.confirmFeePayment({ sub: 'staff-1', roles: ['SUPPORT'] }, listId);
+    const update = statements.find(entry => entry.sql.startsWith('UPDATE grocery_lists SET fee_confirmed_at'))!;
+    assert.deepEqual(update.values, [listId, 'staff-1']);
+  });
+
+  it('stops extending the fee deadline once the cap is reached', async () => {
+    const { pool } = fakePool([
+      (sql) => sql.startsWith('SELECT d.id,d.region_id') ? driverRow : undefined,
+      (sql) => sql.startsWith('SELECT value_int FROM platform_settings') ? gateOff : undefined,
+      (sql) => sql.startsWith('SELECT key,value_int,value_text') ? settingsRows({ mode: 'CARD_TO_CARD' }) : undefined,
+      (sql) => sql.startsWith('SELECT id,customer_id,driver_id,status,fee_confirmed_at,fee_deadline_at') ? {
+        rows: [{ customer_id: customer.sub, driver_id: driverId, status: 'ASSIGNED', fee_confirmed_at: null, fee_deadline_at: new Date(), payment_deadline_at: null, fee_extensions: 2, payment_extensions: 0 }],
+        rowCount: 1,
+      } : undefined,
+    ]);
+    const service = new GroceryService(pool, undefined as never);
+    await assert.rejects(service.extendDeadline({ sub: 'driver-user' }, listId, 'FEE'), ConflictException);
+  });
+
+  it('extends the payment deadline and tells the customer', async () => {
+    const { pool, statements } = fakePool([
+      (sql) => sql.startsWith('SELECT d.id,d.region_id') ? driverRow : undefined,
+      (sql) => sql.startsWith('SELECT value_int FROM platform_settings') ? gateOff : undefined,
+      (sql) => sql.startsWith('SELECT key,value_int,value_text') ? settingsRows({ mode: 'CARD_TO_CARD' }) : undefined,
+      (sql) => sql.startsWith('SELECT id,customer_id,driver_id,status,fee_confirmed_at,fee_deadline_at') ? {
+        rows: [{ customer_id: customer.sub, driver_id: driverId, status: 'AWAITING_PAYMENT', fee_confirmed_at: new Date(), fee_deadline_at: null, payment_deadline_at: new Date(), fee_extensions: 0, payment_extensions: 0 }],
+        rowCount: 1,
+      } : undefined,
+      (sql) => sql.startsWith('SELECT g.id,g.customer_id') ? { rows: [{ id: listId, customerId: customer.sub, status: 'AWAITING_PAYMENT', driverUserId: 'driver-user' }], rowCount: 1 } : undefined,
+      (sql) => sql.startsWith('SELECT name,quantity') || sql.startsWith('SELECT b.id,b.amount_rial') ? { rows: [], rowCount: 0 } : undefined,
+    ]);
+    const service = new GroceryService(pool, undefined as never);
+    await service.extendDeadline({ sub: 'driver-user' }, listId, 'PAYMENT');
+    const update = statements.find(entry => entry.sql.startsWith('UPDATE grocery_lists SET payment_deadline_at'))!;
+    assert.equal(update.values[1], '15');
+    assert.match(update.sql, /payment_extensions=payment_extensions\+1/);
+  });
+
+  it('sends the invoice back to the courier when the customer objects', async () => {
+    const { pool, statements } = fakePool([
+      (sql) => sql.startsWith('SELECT g.id,g.customer_id,g.status') ? { rows: [{ customer_id: customer.sub, status: 'INVOICE_SENT', driver_user: 'driver-user' }], rowCount: 1 } : undefined,
+      (sql) => sql.startsWith('SELECT g.id,g.customer_id') ? { rows: [{ id: listId, customerId: customer.sub, status: 'SHOPPING', driverUserId: 'driver-user' }], rowCount: 1 } : undefined,
+      (sql) => sql.startsWith('SELECT name,quantity') || sql.startsWith('SELECT b.id,b.amount_rial') ? { rows: [], rowCount: 0 } : undefined,
+    ]);
+    const service = new GroceryService(pool, undefined as never);
+    await service.rejectInvoice(customer, listId, 'قیمت تخم‌مرغ اشتباه ثبت شده');
+    const update = statements.find(entry => entry.sql.startsWith("UPDATE grocery_lists SET status='SHOPPING'"))!;
+    assert.deepEqual(update.values, [listId, 'قیمت تخم‌مرغ اشتباه ثبت شده']);
+  });
+
+  it('credits the wallet when a mission with a paid fee is cancelled', async () => {
+    const { pool, statements } = fakePool([
+      (sql) => sql.startsWith('SELECT d.id,d.region_id') ? driverRow : undefined,
+      (sql) => sql.startsWith('SELECT value_int FROM platform_settings') ? gateOff : undefined,
+      (sql) => sql.startsWith('SELECT id,customer_id,driver_id,status,fee_rial') ? {
+        rows: [{ id: listId, customer_id: customer.sub, driver_id: driverId, status: 'SHOPPING', fee_rial: '120000', fee_confirmed_at: new Date(), refunded_at: null }],
+        rowCount: 1,
+      } : undefined,
+      (sql) => sql.startsWith('SELECT g.id,g.customer_id') ? { rows: [{ id: listId, customerId: customer.sub, status: 'CANCELLED', driverUserId: 'driver-user' }], rowCount: 1 } : undefined,
+      (sql) => sql.startsWith('SELECT name,quantity') || sql.startsWith('SELECT b.id,b.amount_rial') ? { rows: [], rowCount: 0 } : undefined,
+    ]);
+    const service = new GroceryService(pool, undefined as never);
+    await service.transition({ sub: 'driver-user' }, listId, 'CANCELLED', 'فروشگاه بسته شده است');
+    const credit = statements.find(entry => entry.sql.startsWith('INSERT INTO wallet_credits'))!;
+    assert.deepEqual(credit.values, [customer.sub, '120000', listId, 'بازگشت کرایهٔ ماموریت خرید لغوشده', 'driver-user']);
+    const refund = statements.find(entry => entry.sql.startsWith('UPDATE grocery_lists SET refund_rial'))!;
+    assert.deepEqual(refund.values, [listId, '120000']);
+  });
+
+  it('validates the revenue settings before writing them', async () => {
+    const service = new GroceryService({ connect: () => { throw new Error('unexpected connection'); } } as never, undefined as never);
+    const staff = { sub: 'staff-1', roles: ['SUPER_ADMIN'] };
+    await assert.rejects(service.updateAdminSettings(staff, { revenueMode: 'MAGIC' }), BadRequestException);
+    await assert.rejects(service.updateAdminSettings(staff, { feeBps: 20000 }), BadRequestException);
+    await assert.rejects(service.updateAdminSettings(staff, {}), BadRequestException);
   });
 
   it('shows every bid to the customer but only their own to a courier', async () => {

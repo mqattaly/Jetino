@@ -45,5 +45,15 @@ export class GroceryController {
   @Post('lists/:id/cancel') cancel(@Req() req: AuthRequest, @Param('id') id: string, @Body() body: { reason?: unknown }) {
     return this.grocery.cancel(req.user, id, body?.reason);
   }
+  @Post('lists/:id/fee-payment') feePayment(@Req() req: AuthRequest, @Param('id') id: string,
+    @Body() body: { method?: unknown; receiptUrl?: unknown; reference?: unknown }) {
+    return this.grocery.declareFeePayment(req.user, id, body ?? {});
+  }
+  @Post('lists/:id/invoice/reject') rejectInvoice(@Req() req: AuthRequest, @Param('id') id: string, @Body() body: { reason?: unknown }) {
+    return this.grocery.rejectInvoice(req.user, id, body?.reason);
+  }
+  @Post('lists/:id/deadline/extend') extend(@Req() req: AuthRequest, @Param('id') id: string, @Body() body: { kind?: unknown }) {
+    return this.grocery.extendDeadline(req.user, id, body?.kind);
+  }
   @Get('board') board(@Req() req: AuthRequest) { return this.grocery.courierBoard(req.user); }
 }

@@ -15,6 +15,10 @@ export class WalletService {
         SELECT r.id, r.order_id, r.amount_rial, r.kind, r.reason, r.created_at
         FROM order_refunds r JOIN orders o ON o.id=r.order_id
         WHERE o.customer_id=$1 AND r.destination='WALLET'
+        UNION ALL
+        -- credits that do not belong to a restaurant order: a cancelled shopping mission, an adjustment
+        SELECT c.id, NULL::uuid AS order_id, c.amount_rial, c.kind, c.reason, c.created_at
+        FROM wallet_credits c WHERE c.user_id=$1
       )
       SELECT COALESCE((SELECT SUM(amount_rial) FROM entries), 0)::text AS "balanceRial",
              COALESCE((SELECT jsonb_agg(jsonb_build_object(
