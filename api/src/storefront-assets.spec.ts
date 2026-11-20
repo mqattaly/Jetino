@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
-import { HERO_IMAGE, photoFor } from '../../src/catalogImages';
+import { GROCERY_FLOW_IMAGE, HERO_IMAGE, photoFor } from '../../src/catalogImages';
 
 const root = resolve(__dirname, '../..');
 const publicFile = (url: string) => resolve(root, 'public', url.replace(/^\//, ''));
@@ -14,12 +14,18 @@ describe('storefront images and install icons', () => {
     assert.equal(photoFor('خورشت قورمه سبزی').src, '/images/cat-stew.jpg');
     assert.equal(photoFor('نان محلی').src, '/images/cat-bakery.jpg');
     assert.equal(photoFor('شربت لیمو').src, '/images/cat-dessert.jpg');
+    // the supermarket service needs its own picture: grocery shops must not fall back to food
+    assert.equal(photoFor('سوپرمارکت محله').src, '/images/cat-grocery.jpg');
+    assert.equal(photoFor('هایپر مرکزی', 'میوه و سبزیجات').src, '/images/cat-grocery.jpg');
+    // «قورمه سبزی» is a stew, not a greengrocer
+    assert.equal(photoFor('خورشت قورمه سبزی').src, '/images/cat-stew.jpg');
   });
   it('picks a stable image when a business has no known category', () => {
     assert.deepEqual(photoFor('کسب‌وکار ناشناخته'), photoFor('کسب‌وکار ناشناخته'));
   });
   it('ships every representative photo inside public', () => {
-    for (const photo of [HERO_IMAGE, ...['کباب', 'زغال', 'ماهی', 'خورشت', 'نان', 'شربت'].map((term) => photoFor(term))]) {
+    const terms = ['کباب', 'زغال', 'ماهی', 'خورشت', 'نان', 'شربت', 'سوپرمارکت', 'لبنیات'];
+    for (const photo of [HERO_IMAGE, GROCERY_FLOW_IMAGE, ...terms.map((term) => photoFor(term))]) {
       assert.ok(existsSync(publicFile(photo.src)), `${photo.src} should exist in the static build`);
     }
   });

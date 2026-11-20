@@ -864,3 +864,55 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--brand-bright);
 .ltr-input { direction: ltr; text-align: left; letter-spacing: .06em; font-variant-numeric: tabular-nums; }
 .ltr-hint { direction: rtl; text-align: right; }
 .grocery-copy-text b { letter-spacing: .05em; }
+
+/* ۲۵) دو سرویس: غذا و خرید خانه (باند سوپرمارکت در صفحهٔ اصلی) */
+.quick-actions .grocery-tile {
+  background: linear-gradient(150deg, color-mix(in srgb, var(--brand) 22%, var(--surface)), var(--surface));
+  border-color: color-mix(in srgb, var(--brand) 38%, var(--line));
+}
+.quick-actions .grocery-tile svg { background: color-mix(in srgb, var(--brand) 26%, transparent); color: #fff; }
+.trust-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.grocery-band {
+  display: grid; grid-template-columns: 1.02fr .98fr; align-items: stretch;
+  margin: 24px 0 34px; border-radius: var(--r-hero); overflow: hidden;
+  border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow-sm);
+}
+.grocery-band-copy { display: grid; gap: 12px; align-content: center; padding: clamp(22px, 3vw, 38px); }
+.grocery-band-copy .eyebrow { color: color-mix(in srgb, var(--teal) 72%, var(--ink)); display: inline-flex; align-items: center; gap: 7px; }
+.grocery-band-copy h2 { font-size: clamp(21px, 2.4vw, 29px); line-height: 1.55; margin: 0; color: var(--ink); }
+.grocery-band-copy h2 em { font-style: normal; color: var(--brand-bright); }
+.grocery-band-copy > p { margin: 0; font-size: 13px; line-height: 2.1; color: var(--ink-2); }
+.grocery-band-steps { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 9px; }
+.grocery-band-steps li { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: center; padding: 10px 12px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); }
+.grocery-band-steps b { grid-row: span 2; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 9px; font-size: 12px; background: color-mix(in srgb, var(--teal) 22%, transparent); color: color-mix(in srgb, var(--teal) 80%, var(--ink)); }
+.grocery-band-steps span { font-size: 12.5px; font-weight: 700; color: var(--ink); }
+.grocery-band-steps small { font-size: 10.5px; color: var(--muted); }
+.grocery-band-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+.grocery-band-cta { display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px; border-radius: var(--r-pill); background: var(--brand); color: #fff; font-size: 12.5px; font-weight: 800; text-decoration: none; box-shadow: 0 12px 26px color-mix(in srgb, var(--brand) 34%, transparent); transition: transform var(--t-fast) var(--spring), background var(--t-fast) var(--ease); }
+.grocery-band-cta:hover { transform: translateY(-2px); background: var(--brand-bright); }
+.grocery-band-cta svg { transform: rotate(180deg); }
+.grocery-band-note { font-size: 10.5px; color: var(--muted); line-height: 1.9; max-width: 280px; }
+.grocery-band-media { position: relative; min-height: 300px; }
+.grocery-band-media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.grocery-band-media { border-inline-start: 1px solid var(--line); }
+@media (max-width: 900px) {
+  .trust-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grocery-band { grid-template-columns: 1fr; }
+  .grocery-band-media { order: -1; min-height: 190px; border-inline-start: 0; border-bottom: 1px solid var(--line); }
+  .grocery-band-note { max-width: none; }
+  .tabbar { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; }
+  .tabbar a, .tabbar button { font-size: 9px; padding: 8px 2px; }
+}
+@media (max-width: 720px) {
+  /* the story (food box + grocery basket) stays visible behind the headline on phones */
+  .hero::after {
+    background:
+      linear-gradient(165deg, rgba(9, 20, 33, .93) 12%, rgba(9, 20, 33, .8) 58%, rgba(9, 20, 33, .62)),
+      radial-gradient(80% 60% at 12% 18%, rgba(9, 20, 33, 0), rgba(9, 20, 33, .35));
+  }
+  .hero-copy { padding-bottom: 44px; }
+  .hero-note { flex-wrap: wrap; row-gap: 8px; column-gap: 12px; }
+  .hero-note span { font-size: 10px; padding: 6px 9px; background: rgba(9, 20, 33, .58); }
+  .hero h1 { text-shadow: 0 2px 18px rgba(5, 12, 20, .55); }
+  .hero-copy > p { text-shadow: 0 1px 12px rgba(5, 12, 20, .5); }
+}
