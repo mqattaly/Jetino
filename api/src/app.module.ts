@@ -16,6 +16,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { SecurityModule } from './security/security.module';
 import { SafetyModule } from './safety/safety.module';
 import { GroceryModule } from './grocery/grocery.module';
+import { IdentityModule } from './identity/identity.module';
 
-@Module({ imports: [DatabaseModule, SecurityModule, SafetyModule, AuthModule, BusinessesModule, AdminModule, AddressesModule, OrdersModule, DriversModule, DeliveryModule, SupportModule, CancellationsModule, NotificationsModule, WalletModule, PartnersModule, GroceryModule], controllers: [HealthController] })
+@Module({ imports: [DatabaseModule, SecurityModule, SafetyModule, AuthModule, BusinessesModule, AdminModule, AddressesModule, OrdersModule, DriversModule, DeliveryModule, SupportModule, CancellationsModule, NotificationsModule, WalletModule, PartnersModule, GroceryModule, IdentityModule], controllers: [HealthController] })
 export class AppModule {}

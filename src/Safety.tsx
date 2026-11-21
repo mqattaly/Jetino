@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, BadgeCheck, Bike, Clock3, ExternalLink, ImageUp, Navigation, Radio, ShieldAlert, ShieldCheck, ShieldX, Siren, UserCheck } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, Bike, Clock3, ExternalLink, ImageUp, Navigation, Radio, RefreshCw, ShieldAlert, ShieldCheck, ShieldX, Siren, UserCheck } from 'lucide-react';
 import { PhotoField } from './PhotoField';
 import { prettyPlate } from './ui/plate';
 
@@ -236,7 +236,8 @@ export function DriverVerificationPanel({ token }: { token: string }) {
   </section>;
 }
 
-type QueueRow = { id: string; fullName: string | null; plateNumber: string | null; vehicleType: string | null; photoUrl: string | null; idCardUrl: string | null; selfieUrl: string | null; verificationStatus: string; verificationNote: string | null; submittedAt: string | null; phone: string; regionName: string };
+type QueueRow = { id: string; fullName: string | null; plateNumber: string | null; vehicleType: string | null; photoUrl: string | null; idCardUrl: string | null; selfieUrl: string | null; verificationStatus: string; verificationNote: string | null; submittedAt: string | null; phone: string; regionName: string;
+  shahkarMatched: boolean | null; identityMatched: boolean | null; registryFirstName: string | null; registryLastName: string | null; nationalCode: string | null; biometricStatus: string; biometricReason: string | null; biometricCheckedAt: string | null };
 
 /** Operations review: three pictures side by side and one explicit decision. */
 export function AdminDriverVerification({ token }: { token: string }) {
@@ -258,14 +259,23 @@ export function AdminDriverVerification({ token }: { token: string }) {
   const decide = async (row: QueueRow, decision: 'APPROVED' | 'REJECTED') => {
     setBusy(row.id); setError(''); setNotice('');
     try {
-      await api(`/api/v1/admin/drivers/verification/${row.id}`, token, 'PATCH', { status: decision, note: (notes[row.id] ?? '').trim() || undefined, selfieMatch: matches[row.id] === true });
+      await api(`/api/v1/admin/drivers/${row.id}/verification`, token, 'PATCH', { status: decision, note: (notes[row.id] ?? '').trim() || undefined, selfieMatch: matches[row.id] === true });
       setNotice(decision === 'APPROVED' ? 'مدارک تأیید شد و به راننده اطلاع داده شد.' : 'رد مدارک ثبت و دلیل برای راننده ارسال شد.');
       await load();
     } catch (e) { setError((e as Error).message); } finally { setBusy(''); }
   };
 
+  const refreshIdentity = async (row: QueueRow) => {
+    setBusy(row.id); setError(''); setNotice('');
+    try {
+      await api(`/api/v1/admin/drivers/${row.id}/identity/refresh`, token, 'POST');
+      setNotice('نتیجهٔ تازه از سرویس بیومتریک گرفته شد.');
+      await load();
+    } catch (e) { setError((e as Error).message); } finally { setBusy(''); }
+  };
+
   return <section className="admin-card verification-card">
-    <div className="settings-title"><div><h2><ShieldCheck size={18} /> تأیید مدارک پیک</h2><p>سلفی، عکس پروفایل و کارت ملی را مقایسه کنید؛ تأیید بدون تطبیق سلفی ممکن نیست.</p></div>
+    <div className="settings-title"><div><h2><ShieldCheck size={18} /> تأیید مدارک پیک</h2><p>سلفی، عکس پروفایل و کارت ملی را مقایسه کنید؛ تأیید بدون تطبیق سلفی ممکن نیست. نشان «زحل» یعنی استعلام رسمی و ویدئوی بیومتریک هم تأیید شده.</p></div>
       <div className="report-controls"><select aria-label="وضعیت صف بررسی" value={status} onChange={e => { setStatus(e.target.value); void load(e.target.value); }}>
         <option value="PENDING">در انتظار بررسی</option><option value="APPROVED">تأییدشده</option><option value="REJECTED">ردشده</option><option value="UNVERIFIED">ارسال‌نشده</option>
       </select><button className="refresh-button" onClick={() => void load()}><Clock3 size={14} />به‌روزرسانی</button></div>
@@ -283,6 +293,18 @@ export function AdminDriverVerification({ token }: { token: string }) {
         <b>{row.fullName || 'بدون نام'} {row.plateNumber ? <span className="plate-number" dir="ltr">{prettyPlate(row.plateNumber)}</span> : null}</b>
         <small dir="ltr">{row.phone}</small>
         <small>{row.regionName} · ارسال {clock(row.submittedAt)}</small>
+        <div className="identity-flags">
+          <span className={`identity-flag ${row.shahkarMatched === true ? 'ok' : row.shahkarMatched === false ? 'bad' : ''}`}>
+            شاهکار: {row.shahkarMatched === true ? 'تطبیق' : row.shahkarMatched === false ? 'عدم تطبیق' : 'انجام نشده'}
+          </span>
+          <span className={`identity-flag ${row.identityMatched === true ? 'ok' : row.identityMatched === false ? 'bad' : ''}`}>
+            ثبت احوال: {row.identityMatched === true ? (row.registryFirstName ? `${row.registryFirstName} ${row.registryLastName ?? ''}`.trim() : 'تأیید') : row.identityMatched === false ? 'عدم تطبیق' : 'انجام نشده'}
+          </span>
+          <span className={`identity-flag ${row.biometricStatus === 'MATCHED' ? 'ok' : row.biometricStatus === 'REJECTED' || row.biometricStatus === 'FAILED' ? 'bad' : row.biometricStatus === 'PENDING' ? 'wait' : ''}`}>
+            بیومتریک: {row.biometricStatus === 'MATCHED' ? 'تأیید' : row.biometricStatus === 'REJECTED' ? 'رد' : row.biometricStatus === 'PENDING' ? 'در بررسی' : row.biometricStatus === 'FAILED' ? 'خطا' : 'نفرستاده'}
+          </span>
+          {row.biometricStatus === 'PENDING' && <button type="button" className="text-button identity-refresh" disabled={busy === row.id} onClick={() => void refreshIdentity(row)}><RefreshCw size={12} />استعلام تازه</button>}
+        </div>
         {status === 'PENDING' ? <>
           <label className="match-check"><input type="checkbox" checked={matches[row.id] === true} onChange={e => setMatches(current => ({ ...current, [row.id]: e.target.checked }))} />سلفی با عکس پروفایل و کارت ملی مطابقت دارد</label>
           <input className="checkout-input" maxLength={300} value={notes[row.id] ?? ''} onChange={e => setNotes(current => ({ ...current, [row.id]: e.target.value }))} placeholder="توضیح برای راننده (در صورت رد الزامی است)" />

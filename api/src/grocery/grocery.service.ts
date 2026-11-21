@@ -107,14 +107,20 @@ export class GroceryService {
   /** The courier behind a request; every driver-only action goes through this gate. */
   private async driverContext(user: Principal, queryable: { query: Pool['query'] } = this.pool) {
     const result = await queryable.query(
-      `SELECT d.id,d.region_id AS "regionId",d.status,d.verification_status AS verification
+      `SELECT d.id,d.region_id AS "regionId",d.status,d.verification_status AS verification,
+              d.shahkar_matched AS "shahkarMatched",d.identity_matched AS "identityMatched",
+              d.biometric_status AS "biometricStatus"
        FROM drivers d WHERE d.user_id=$1`, [user.sub]);
     if (!result.rowCount) throw new ForbiddenException('فقط پیک‌های ثبت‌شده می‌توانند پیشنهاد بدهند.');
-    const row = result.rows[0] as { id: string; regionId: string; status: string; verification: string };
+    const row = result.rows[0] as { id: string; regionId: string; status: string; verification: string; shahkarMatched: boolean | null; identityMatched: boolean | null; biometricStatus: string };
     if (row.status !== 'ACTIVE') throw new ForbiddenException('حساب پیک شما فعال نیست.');
     const gate = await queryable.query(`SELECT value_int FROM platform_settings WHERE key='require_driver_verification'`);
     const requireVerified = Number(gate.rows[0]?.value_int ?? 0) === 1;
     if (requireVerified && row.verification !== 'APPROVED') throw new ForbiddenException('برای دریافت ماموریت، تأیید مدارک هویتی لازم است.');
+    const identityGate = await queryable.query(`SELECT value_int FROM platform_settings WHERE key='require_driver_identity'`);
+    if (Number(identityGate.rows[0]?.value_int ?? 0) === 1 && !(row.shahkarMatched === true && row.identityMatched === true && row.biometricStatus === 'MATCHED')) {
+      throw new ForbiddenException('برای گرفتن ماموریت، اول احراز هویتت رو کامل کن: استعلام کد ملی و ویدئوی بیومتریک.');
+    }
     return row;
   }
 

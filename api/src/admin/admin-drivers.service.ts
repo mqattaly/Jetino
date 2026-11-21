@@ -28,7 +28,11 @@ export class AdminDriversService {
       `SELECT d.id,d.full_name AS "fullName",d.plate_number AS "plateNumber",d.vehicle_type AS "vehicleType",
               d.photo_url AS "photoUrl",d.id_card_url AS "idCardUrl",d.selfie_url AS "selfieUrl",
               d.verification_status AS "verificationStatus",d.verification_note AS "verificationNote",
-              d.verification_submitted_at AS "submittedAt",u.phone,r.name AS "regionName"
+              d.verification_submitted_at AS "submittedAt",u.phone,r.name AS "regionName",
+              d.shahkar_matched AS "shahkarMatched",d.identity_matched AS "identityMatched",
+              d.identity_first_name AS "registryFirstName",d.identity_last_name AS "registryLastName",
+              d.national_code AS "nationalCode",d.biometric_status AS "biometricStatus",
+              d.biometric_reason AS "biometricReason",d.biometric_checked_at AS "biometricCheckedAt"
        FROM drivers d JOIN users u ON u.id=d.user_id JOIN regions r ON r.id=d.region_id
        WHERE d.verification_status=$1 ORDER BY d.verification_submitted_at NULLS LAST,d.created_at DESC LIMIT 100`,
       [status],

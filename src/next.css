@@ -1086,3 +1086,45 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--brand-bright);
   .store-page .ops-header-actions { gap: 5px; }
   .store-page .ops-header-actions .text-button { font-size: 11px; padding: 6px 9px; }
 }
+
+/* ۳۰) احراز هویت رسمی پیک (زحل): شاهکار، ثبت احوال و ویدئوی بیومتریک */
+.identity-card .driver-profile-head p { max-width: 62ch; }
+.identity-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.identity-steps li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
+.identity-steps li.done { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); background: linear-gradient(180deg, var(--ok-soft), var(--surface-2)); }
+.identity-step-num { width: 26px; height: 26px; border-radius: 9px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--line); font-size: 12px; flex: none; }
+.identity-steps b { display: block; font-size: 12.5px; }
+.identity-steps small { color: var(--muted); font-size: 10.5px; }
+.identity-result, .identity-form, .identity-video { border: 1px solid var(--line); border-radius: 16px; padding: 14px; display: grid; gap: 12px; background: var(--surface); }
+.identity-result-head, .identity-video-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.identity-result-head svg, .identity-video-head svg { color: var(--brand-bright); }
+.identity-result-head b { font-size: 13.5px; }
+.identity-result-head .status-pill, .identity-video-head .status-pill { margin-inline-start: auto; }
+.identity-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; margin: 0; }
+.identity-facts div { display: grid; gap: 2px; min-width: 0; }
+.identity-facts dt { font-size: 10px; color: var(--muted); }
+.identity-facts dd { margin: 0; font-size: 12.5px; overflow-wrap: anywhere; }
+.identity-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.identity-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.identity-actions .primary-button, .identity-actions .text-button, .identity-actions .menu-edit { width: auto; margin: 0; height: auto; }
+.identity-video-head .status-pill.pending-pill { color: var(--warn); }
+.identity-video .status-pill.rejected-pill { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
+.identity-preview { width: 100%; max-height: 240px; border-radius: 14px; background: #000; }
+.identity-flags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+.identity-flag { font-size: 10px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); }
+.identity-flag.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+.identity-flag.bad { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
+.identity-flag.wait { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
+.identity-flags .identity-refresh { display: inline-flex; align-items: center; gap: 4px; margin: 0; font-size: 10.5px; }
+@media (max-width: 640px) {
+  .identity-steps, .identity-grid, .identity-facts { grid-template-columns: 1fr; }
+  .identity-actions .primary-button { width: 100%; }
+}
+.identity-video-head .status-pill, .identity-result-head .status-pill { white-space: nowrap; }
+.identity-video-head b, .identity-result-head b { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.identity-actions .primary-button, .identity-actions .menu-edit { flex: 0 1 auto; }
+/* ستون‌های عکس صف تأیید: جای‌گاه «ثبت نشده» نباید از ستون بیرون بزند */
+.verification-photos figure { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.verification-photos img, .verification-missing { width: 100%; min-width: 0; max-width: 100%; }
+.verification-meta { min-width: 0; overflow-wrap: anywhere; }
+.verification-photos { align-items: start; }
