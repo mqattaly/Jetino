@@ -26,6 +26,7 @@ type Detail = Row & {
   feeDue: boolean; canStartShopping: boolean;
 };
 type Address = { id: string; label: string; addressText: string; regionName: string };
+type Shop = { id: string; name: string; addressText: string; regionName: string; productCount: number };
 
 const money = (value: string | number | null) => value === null || value === undefined ? '—' : `${new Intl.NumberFormat('fa-IR').format(Number(value))} ریال`;
 const fa = (value: string | number) => new Intl.NumberFormat('fa-IR').format(Number(value));
@@ -92,7 +93,8 @@ export default function GroceryApp() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [form, setForm] = useState({ itemsText: '', storeName: '', note: '', addressId: '' });
+  const [shops, setShops] = useState<Shop[]>([]);
+  const [form, setForm] = useState({ itemsText: '', storeName: '', storeId: '', note: '', addressId: '' });
   const [feeProof, setFeeProof] = useState<string | null>(null);
   const [feeRef, setFeeRef] = useState('');
   const [goodsProof, setGoodsProof] = useState<string | null>(null);
@@ -121,13 +123,19 @@ export default function GroceryApp() {
     setForm(current => current.addressId ? current : { ...current, addressId: data?.[0]?.id ?? '' });
   }, [token]);
 
+  const loadShops = useCallback(async (auth = token) => {
+    if (!auth) return;
+    const data = await request<{ stores: Shop[] }>('/api/v1/grocery/stores', auth);
+    setShops(data.stores ?? []);
+  }, [token]);
+
   useEffect(() => {
     document.title = 'خرید خونه از سوپرمارکت | جتینو';
     if (!token) return;
-    void Promise.all([loadList(token), loadAddresses(token)]).catch((e: Error) => setError(e.message));
+    void Promise.all([loadList(token), loadAddresses(token), loadShops(token)]).catch((e: Error) => setError(e.message));
     const timer = window.setInterval(() => { void loadList(token).catch(() => { /* offline is fine */ }); if (selectedId) void loadDetail(selectedId, token).catch(() => { /* keep the last view */ }); }, 20_000);
     return () => window.clearInterval(timer);
-  }, [token, loadList, loadAddresses, loadDetail, selectedId]);
+  }, [token, loadList, loadAddresses, loadDetail, loadShops, selectedId]);
 
   const login = (auth: string) => { sessionStorage.setItem('jetino_customer_token', auth); setToken(auth); setError(''); };
   const logout = () => { sessionStorage.removeItem('jetino_customer_token'); setToken(''); setRows([]); setDetail(null); };
@@ -143,9 +151,15 @@ export default function GroceryApp() {
     const created = await request<Detail>('/api/v1/grocery/lists', token, {
       method: 'POST',
       headers: { 'Idempotency-Key': (crypto as Crypto & { randomUUID(): string }).randomUUID() },
-      body: JSON.stringify({ itemsText: form.itemsText, storeName: form.storeName || undefined, note: form.note || undefined, addressId: form.addressId }),
+      body: JSON.stringify({
+        itemsText: form.itemsText,
+        storeId: form.storeId || undefined,
+        storeName: shops.length > 0 ? undefined : form.storeName || undefined,
+        note: form.note || undefined,
+        addressId: form.addressId,
+      }),
     });
-    setDetail(created); setOpen(false); setForm({ itemsText: '', storeName: '', note: '', addressId: form.addressId });
+    setDetail(created); setOpen(false); setForm({ itemsText: '', storeName: '', storeId: '', note: '', addressId: form.addressId });
     await loadList();
     setNotice('لیست ثبت شد؛ پیک‌های منطقه تا ۱۵ دقیقه پیشنهاد می‌دن.');
   });
@@ -215,6 +229,7 @@ export default function GroceryApp() {
           <div className="eyebrow muted">لیست بده، پیک برات می‌خره</div>
           <h1>خرید از سوپرمارکت</h1>
           <p>لیست خریدتو بنویس؛ پیک‌های محلی قیمت ماموریت می‌دن، یکیشون رو انتخاب می‌کنی و خرید رو برات انجام می‌ده.</p>
+          <a className="grocery-owner-link" href="/grocery/store"><Store size={14} />صاحب فروشگاهی؟ پنل فروشگاه</a>
         </div>
       </div>
 
@@ -235,8 +250,14 @@ export default function GroceryApp() {
           <label className="checkout-label">متن لیست<textarea className="checkout-input grocery-textarea" rows={5} value={form.itemsText}
             placeholder="مثلاً: ۲ کیلو سیب، یه شونه تخم‌مرغ، نان سنگک، ماست ۹۰۰ گرمی" onChange={e => setForm({ ...form, itemsText: e.target.value })} /></label>
           <div className="grocery-grid-2">
-            <label className="checkout-label">نام فروشگاه (اختیاری)<input className="checkout-input" value={form.storeName}
-              placeholder="مثلاً هایپر مرکزی" onChange={e => setForm({ ...form, storeName: e.target.value })} /></label>
+            {shops.length > 0
+              ? <label className="checkout-label">فروشگاه<select className="checkout-input" value={form.storeId}
+                  onChange={e => setForm({ ...form, storeId: e.target.value })}>
+                  <option value="">فرقی نمی‌کنه؛ پیک خودش می‌ره</option>
+                  {shops.map(shop => <option key={shop.id} value={shop.id}>{shop.name} — {shop.addressText}</option>)}
+                </select></label>
+              : <label className="checkout-label">نام فروشگاه (اختیاری)<input className="checkout-input" value={form.storeName}
+                  placeholder="مثلاً هایپر مرکزی" onChange={e => setForm({ ...form, storeName: e.target.value })} /></label>}
             <label className="checkout-label">نشانی تحویل<select className="checkout-input" value={form.addressId} onChange={e => setForm({ ...form, addressId: e.target.value })}>
               {addresses.length === 0 && <option value="">نشانی ثبت نشده</option>}
               {addresses.map(address => <option key={address.id} value={address.id}>{address.label} — {address.addressText}</option>)}
@@ -248,6 +269,7 @@ export default function GroceryApp() {
             <ClipboardList size={16} /><span>ثبت لیست و گرفتن پیشنهاد</span>
           </button>
           {addresses.length === 0 && <p className="grocery-hint">برای ثبت لیست، اول یه نشانی تو <a href="/orders">سفارش‌های من</a> ثبت کن.</p>}
+          {shops.length === 0 && <p className="grocery-hint">هنوز فروشگاهی از طرف جتینو تأیید نشده؛ اسم فروشگاه رو خودت بنویس یا بذار پیک انتخاب کنه. <a href="/grocery/store">صاحب فروشگاهی؟ فروشگاهت رو ثبت کن</a></p>}
         </section>}
 
         <section className="grocery-card">

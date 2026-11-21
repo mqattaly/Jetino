@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CreditCard, Landmark, Save, ShieldCheck, Wallet } from 'lucide-react';
 import { AdminGroceryReports } from './AdminGroceryReports';
+import { AdminGroceryStores } from './AdminGroceryStores';
 
 type GrocerySettings = {
   bidMinutes: number; paymentMinutes: number; revenueMode: 'NONE' | 'FEE_PERCENT' | 'GOODS_PERCENT' | 'FIXED';
@@ -180,6 +181,8 @@ export default function AdminGrocery({ token }: { token: string }) {
           <span className={`status-pill ${row.paymentConfirmedAt ? 'status-confirmed' : 'pending-pill'}`}>{row.paymentConfirmedAt ? 'تأییدشده' : 'در جریان'}</span>
         </div>)}
     </div>
+
+    <AdminGroceryStores token={token}/>
 
     <AdminGroceryReports token={token}/>
   </section>;

@@ -36,10 +36,11 @@ export default function NotificationApp(){const[token,setToken]=useState(()=>ses
  const login=(auth:string)=>{sessionStorage.setItem('jetino_customer_token',auth);setToken(auth);void load(auth);void loadPush(auth);};
  const mark=async(item:Notice)=>{if(item.readAt)return;try{await api(`/api/v1/notifications/${item.id}/read`,token,'PATCH');setItems(current=>current.map(x=>x.id===item.id?{...x,readAt:new Date().toISOString()}:x));setUnread(n=>Math.max(0,n-1));}catch(e){setError((e as Error).message);}};
  // every notification names the screen that can act on it, so the customer is never dropped on a panel they cannot use
- const destinations:Record<string,{path:string;key:'orderId'|'ticketId'}>={
+ const destinations:Record<string,{path:string;key:'orderId'|'ticketId'|'storeId'}>={
   DELIVERY_ASSIGNED:{path:'/driver/deliveries',key:'orderId'},DRIVER_FEEDBACK:{path:'/driver/deliveries',key:'orderId'},
   ORDER_NEW:{path:'/business/orders',key:'orderId'},ORDER_CANCELLED:{path:'/business/orders',key:'orderId'},ORDER_FEEDBACK:{path:'/business/orders',key:'orderId'},
   ORDER_CANCELLATION_REQUEST:{path:'/business/orders',key:'orderId'},ORDER_CANCELLATION_REVIEW:{path:'/admin',key:'orderId'},ORDER_CANCELLATION_DECIDED:{path:'/orders',key:'orderId'},ORDER_REFUNDED:{path:'/orders',key:'orderId'},
+  GROCERY_STORE_STATUS:{path:'/grocery/store',key:'storeId'},
   SUPPORT_TICKET_OPENED:{path:'/orders',key:'ticketId'},SUPPORT_TICKET_MESSAGE:{path:'/orders',key:'ticketId'},SUPPORT_TICKET_RESOLVED:{path:'/orders',key:'ticketId'},
  };
  const openNotice=async(item:Notice)=>{

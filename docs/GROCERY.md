@@ -65,6 +65,8 @@ OPEN ──(قبول پیشنهاد)──► ASSIGNED ──(شروع خرید)
 | `grocery_lists` | خود لیست: متن، فروشگاه، نشانی (اسنپ‌شات)، وضعیت، مهلت‌ها، فاکتور، پرداخت |
 | `grocery_bids` | پیشنهاد هر پیک برای هر لیست (`UNIQUE(list_id, driver_id)`) |
 | `grocery_invoice_items` | اقلام ریز فاکتور (اختیاری) |
+| `grocery_stores` | فروشگاه: صاحب، منطقه، نام، تلفن، نشانی، وضعیت تأیید (`021` ندارد؛ `025`) |
+| `grocery_products` | قفسهٔ فروشگاه: نام، دسته، واحد، قیمت ریالی، موجودی، عکس، فعال/بایگانی |
 | `platform_settings` | کلیدهای `grocery_*` (مهلت‌ها و مدل درآمد) + ستون تازهٔ `value_text` |
 
 ## ۴) API
@@ -174,9 +176,52 @@ OPEN ──(قبول پیشنهاد)──► ASSIGNED ──(شروع خرید)
   فهرست رسیدگی، صف رسیدها، جدول روزبه‌روز (بازشو) و دکمهٔ «گرفتن CSV».
   استایل‌ها: بخش ۲۸ در `src/next.css` (کلاس‌های `report-*`).
 
+## ۷٫۶) فروشگاه‌ها و قفسه (مرحلهٔ ۵)
+
+- مهاجرت `025_grocery_stores`:
+  - `grocery_stores(id, owner_user_id UNIQUE, region_id, name, phone, address_text, note, status
+    PENDING|ACTIVE|SUSPENDED, approved_by, approved_at, created_at, updated_at)` — هر کاربر یک
+    فروشگاه (یکتایی روی صاحب) و منطقه از `regions` فعال انتخاب می‌شود (فعلاً بندر خمیر).
+  - `grocery_products(id, store_id, name, category, unit, price_rial, stock numeric(10,2),
+    image_url, is_active, …)` با ایندکس یکتای `(store_id, lower(name))` تا اسم تکراری روی
+    یک قفسه نباشد.
+  - `grocery_lists.store_id` (nullable، `ON DELETE SET NULL`): لیست‌های قدیمی با `store_name`
+    متنی و `store_id=NULL` کار می‌کنند؛ لیست تازه می‌تواند به فروشگاه واقعی وصل شود.
+- قواعد:
+  - ثبت فروشگاه فقط از طرف صاحبش (`POST grocery/store/mine`)؛ ویرایش، وضعیت را برنمی‌گرداند.
+  - `PENDING` می‌تواند قفسه بچیند ولی در فهرست مشتری نمی‌آید؛ `SUSPENDED` نمی‌تواند کالا
+    اضافه/ویرایش کند؛ `ACTIVE` تنها وضعیتی است که `GET grocery/stores` برمی‌گرداند.
+  - هیچ کالایی حذف فیزیکی نمی‌شود؛ «برداشتن از قفسه» یعنی `is_active=false` تا فاکتورهای
+    قبلی سالم بمانند.
+  - قیمت قفسه فقط راهنمای مشتری است؛ مبلغ نهایی همان فاکتور فروشگاه است که پیک آپلود می‌کند
+    (مدل درآمد و کرایهٔ ماموریت دست‌نخورده مانده است).
+  - در `POST grocery/lists`، اگر `storeId` بیاید: فروشگاه باید `ACTIVE` و در همان منطقهٔ
+    نشانی باشد و `store_name` اسنپ‌شات از خود فروشگاه گرفته می‌شود (نه از بدنهٔ درخواست).
+- API تازه (همه پشت `JwtAuthGuard`):
+
+| متد | مسیر | چه کسی |
+|---|---|---|
+| `GET` | `grocery/stores` | مشتری — فروشگاه‌های فعال + تعداد کالا |
+| `GET` | `grocery/stores/:id/products` | مشتری — قفسهٔ همان فروشگاه |
+| `GET` | `grocery/store/mine` | صاحب فروشگاه — فروشگاه و همهٔ کالاها |
+| `POST` | `grocery/store/mine` | ثبت/ویرایش فروشگاه (idempotent با `ON CONFLICT(owner_user_id)`) |
+| `POST` | `grocery/store/mine/products` | کالای تازه |
+| `PATCH` | `grocery/store/mine/products/:id` | ویرایش کالا (قیمت/موجودی/عکس/فعال) |
+| `DELETE` | `grocery/store/mine/products/:id` | برداشتن از قفسه (بایگانی) |
+| `GET` | `admin/grocery/stores?status=` | کارکنان — صف تأیید/فهرست فروشگاه‌ها |
+| `POST` | `admin/grocery/stores/:id/status` | کارکنان — `ACTIVE`/`SUSPENDED`/`PENDING` + یادداشت |
+
+  تغییر وضعیت در `audit_logs` ثبت و به صاحب فروشگاه اعلان (`GROCERY_STORE_STATUS`) می‌شود.
+- رابط‌ها:
+  - `src/GroceryStoreApp.tsx` روی `/grocery/store`: ورود با OTP، فرم ثبت فروشگاه، بنر وضعیت،
+    فرم کالا (دسته، واحد، قیمت ریالی، موجودی، عکس) و فهرست قفسه با ویرایش/برداشتن.
+  - `src/GroceryApp.tsx`: انتخاب فروشگاه از `GET grocery/stores` جای ورودی متنی؛ اگر هیچ
+    فروشگاهی تأیید نشده باشد همان ورودی متنی می‌ماند (سازگاری کامل).
+  - `src/AdminGroceryStores.tsx` داخل `/admin`: فیلتر وضعیت، کارت هر فروشگاه با صاحب/تلفن/
+    نشانی، «تأیید فروشگاه»، «معلق کن»، «برگردون به بررسی» و یادداشت برای صاحب فروشگاه.
+  - استایل‌ها: بخش ۲۹ در `src/next.css` (کلاس‌های `store-*` و `admin-store*`).
+
 ## ۸) گام‌های بعدی
 
-1. **مرحلهٔ ۵ — سوپرمارکت‌ها:** ثبت‌نام فروشگاه، دسته/محصول با واحد و موجودی، و اتصال
-   انتخاب فروشگاه به لیست متنی.
-2. **درگاه پرداخت:** با وصل شدن درگاه رسمی، `paymentMode=GATEWAY` و `grocery_gateway_enabled=1`
+1. **درگاه پرداخت:** با وصل شدن درگاه رسمی، `paymentMode=GATEWAY` و `grocery_gateway_enabled=1`
    می‌شود؛ پرچم‌های `online.enabled` در پاسخ مقصد از همین کلید می‌آید.

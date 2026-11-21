@@ -77,7 +77,49 @@ describe('GroceryService · text shopping list', () => {
     const address = statements.find(entry => entry.sql.startsWith('SELECT a.id,a.address_text'))!;
     assert.deepEqual(address.values, [addressId, customer.sub]);
     const insert = statements.find(entry => entry.sql.startsWith('INSERT INTO grocery_lists'))!;
-    assert.equal(insert.values[10], '20');
+    // values: customer, region, store name, store id, items, note, address, snapshot…, bid minutes, key
+    assert.equal(insert.values[3], null, 'a free-text list carries no shop');
+    assert.equal(insert.values[11], '20');
+  });
+
+
+  it('links the list to an approved shop of the same region and snapshots the shop name', async () => {
+    const storeId = '123e4567-e89b-12d3-a456-426614174099';
+    const { pool, statements } = fakePool([
+      (sql) => sql.startsWith('SELECT a.id,a.address_text') ? {
+        rows: [{ id: addressId, address_text: 'خیابان نمونه ۱۲', instructions: null, latitude: '27.1', longitude: '56.2', regionId: 'region-1', is_active: true }],
+        rowCount: 1,
+      } : undefined,
+      (sql) => sql.startsWith('SELECT id,name,region_id AS "regionId",status FROM grocery_stores') ? {
+        rows: [{ id: storeId, name: 'هایپر مرکزی', regionId: 'region-1', status: 'ACTIVE' }], rowCount: 1,
+      } : undefined,
+      (sql) => sql.startsWith('SELECT key,value_int,value_text') ? settingsRows() : undefined,
+      (sql) => sql.startsWith('INSERT INTO grocery_lists') ? { rows: [{ id: listId }], rowCount: 1 } : undefined,
+      (sql) => sql.startsWith('SELECT g.id,g.customer_id') ? { rows: [{ id: listId, customerId: customer.sub, status: 'OPEN', driverUserId: null }], rowCount: 1 } : undefined,
+      (sql) => sql.startsWith('SELECT name,quantity') || sql.startsWith('SELECT b.id,b.amount_rial') ? { rows: [], rowCount: 0 } : undefined,
+    ]);
+    const service = new GroceryService(pool, undefined as never);
+    await service.create(customer, { itemsText: 'نان، شیر، پنیر', addressId, storeId, storeName: 'اسم جعلی' });
+    const insert = statements.find(entry => entry.sql.startsWith('INSERT INTO grocery_lists'))!;
+    assert.equal(insert.values[2], 'هایپر مرکزی', 'the shop name comes from the shop row, not the request body');
+    assert.equal(insert.values[3], storeId);
+  });
+
+  it('refuses a shop that is suspended or sits in another region', async () => {
+    const storeId = '123e4567-e89b-12d3-a456-426614174099';
+    const build = (status: string, regionId: string) => fakePool([
+      (sql) => sql.startsWith('SELECT a.id,a.address_text') ? {
+        rows: [{ id: addressId, address_text: 'خیابان نمونه ۱۲', instructions: null, latitude: '27.1', longitude: '56.2', regionId: 'region-1', is_active: true }],
+        rowCount: 1,
+      } : undefined,
+      (sql) => sql.startsWith('SELECT id,name,region_id AS "regionId",status FROM grocery_stores') ? {
+        rows: [{ id: storeId, name: 'هایپر مرکزی', regionId, status }], rowCount: 1,
+      } : undefined,
+    ]);
+    await assert.rejects(new GroceryService(build('SUSPENDED', 'region-1').pool, undefined as never)
+      .create(customer, { itemsText: 'نان، شیر، پنیر', addressId, storeId }), BadRequestException);
+    await assert.rejects(new GroceryService(build('ACTIVE', 'region-2').pool, undefined as never)
+      .create(customer, { itemsText: 'نان، شیر، پنیر', addressId, storeId }), BadRequestException);
   });
 
   it('rejects a bid below the minimum fee without opening a transaction', async () => {

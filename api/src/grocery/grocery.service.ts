@@ -133,9 +133,10 @@ export class GroceryService {
     };
   }
 
-  async create(user: Principal, body: { itemsText?: unknown; storeName?: unknown; note?: unknown; addressId?: unknown }, idempotencyKey?: string) {
+  async create(user: Principal, body: { itemsText?: unknown; storeName?: unknown; note?: unknown; addressId?: unknown; storeId?: unknown }, idempotencyKey?: string) {
     const itemsText = GroceryService.text(body?.itemsText, 'متن لیست خرید', 5, 2000)!;
-    const storeName = GroceryService.text(body?.storeName, 'نام فروشگاه', 2, 160, false);
+    const storeId = typeof body?.storeId === 'string' && uuidPattern.test(body.storeId) ? body.storeId : null;
+    let storeName = GroceryService.text(body?.storeName, 'نام فروشگاه', 2, 160, false);
     const note = GroceryService.text(body?.note, 'توضیح', 2, 500, false);
     const addressId = typeof body?.addressId === 'string' && uuidPattern.test(body.addressId) ? body.addressId : null;
     if (!addressId) throw new BadRequestException('نشانی تحویل را انتخاب کنید.');
@@ -147,6 +148,15 @@ export class GroceryService {
       `SELECT a.id,a.address_text,a.instructions,a.latitude::text,a.longitude::text,a.region_id AS "regionId",r.is_active
        FROM addresses a JOIN regions r ON r.id=a.region_id WHERE a.id=$1 AND a.user_id=$2`, [addressId, user.sub]);
     if (!address.rowCount || address.rows[0].is_active === false) throw new NotFoundException('نشانی انتخاب‌شده پیدا نشد.');
+
+    // a list may point at a real shop; the shop's own name is the snapshot, not whatever the app sent
+    if (storeId) {
+      const store = await this.pool.query(
+        `SELECT id,name,region_id AS "regionId",status FROM grocery_stores WHERE id=$1`, [storeId]);
+      if (!store.rowCount || store.rows[0].status !== 'ACTIVE') throw new BadRequestException('این فروشگاه الان از طرف جتینو فعال نیست.');
+      if (store.rows[0].regionId !== address.rows[0].regionId) throw new BadRequestException('این فروشگاه در منطقهٔ نشانی انتخابی تو نیست.');
+      storeName = store.rows[0].name as string;
+    }
 
     const settings = await this.settings(this.pool);
     const client = await this.pool.connect();
@@ -162,15 +172,15 @@ export class GroceryService {
         }
       }
       const inserted = await client.query(
-        `INSERT INTO grocery_lists(customer_id,region_id,store_name,items_text,note,address_id,delivery_address_snapshot,
+        `INSERT INTO grocery_lists(customer_id,region_id,store_name,store_id,items_text,note,address_id,delivery_address_snapshot,
            delivery_instructions_snapshot,delivery_latitude_snapshot,delivery_longitude_snapshot,bid_deadline_at,idempotency_key)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now()+($11 || ' minutes')::interval,$12) RETURNING id`,
-        [user.sub, address.rows[0].regionId, storeName, itemsText, note, addressId, address.rows[0].address_text,
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now()+($12 || ' minutes')::interval,$13) RETURNING id`,
+        [user.sub, address.rows[0].regionId, storeName, storeId, itemsText, note, addressId, address.rows[0].address_text,
           address.rows[0].instructions, address.rows[0].latitude, address.rows[0].longitude, String(settings.bidMinutes), key]);
       const id = inserted.rows[0].id as string;
       await client.query(
         `INSERT INTO audit_logs(actor_id,action,entity_type,entity_id,metadata) VALUES($1,'GROCERY_LIST_CREATED','GROCERY_LIST',$2,$3::jsonb)`,
-        [user.sub, id, JSON.stringify({ bidMinutes: settings.bidMinutes, storeName })]);
+        [user.sub, id, JSON.stringify({ bidMinutes: settings.bidMinutes, storeName, storeId })]);
       const detail = await this.detailFor(client, user, id);
       await client.query('COMMIT');
       return { ...detail, replayed: false };
@@ -183,7 +193,7 @@ export class GroceryService {
   private async detailFor(queryable: { query: Pool['query'] }, user: Principal, id: string) {
     const result = await queryable.query(
       `SELECT g.id,g.customer_id AS "customerId",g.store_name AS "storeName",g.items_text AS "itemsText",g.note,
-              g.delivery_address_snapshot AS "addressText",g.delivery_instructions_snapshot AS instructions,
+              g.store_id AS "storeId",g.delivery_address_snapshot AS "addressText",g.delivery_instructions_snapshot AS instructions,
               g.status,g.bid_deadline_at AS "bidDeadlineAt",g.fee_rial,g.invoice_amount_rial,g.invoice_photo_url AS "invoicePhotoUrl",
               g.invoice_store_card AS "storeCard",g.invoice_store_holder AS "storeHolder",g.invoice_submitted_at AS "invoiceSubmittedAt",
               g.invoice_approved_at AS "invoiceApprovedAt",g.payment_method AS "paymentMethod",g.payment_receipt_url AS "paymentReceiptUrl",

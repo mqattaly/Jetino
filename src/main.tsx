@@ -7,6 +7,7 @@ import { BusinessOrdersApp, CustomerOrdersApp } from './OperationsApp';
 import DriverApp from './DriverApp';
 import NotificationApp from './NotificationApp';
 import GroceryApp from './GroceryApp';
+import GroceryStoreApp from './GroceryStoreApp';
 import { ThemeProvider } from './ui/theme';
 import BusinessMenuApp from './BusinessMenuApp';
 import '@fontsource-variable/vazirmatn';
@@ -16,7 +17,7 @@ import './theme.css';
 import './next.css';
 
 const path = window.location.pathname;
-const Root = path.startsWith('/join/business') ? () => <PartnerJoinApp kind="business"/> : path.startsWith('/join/driver') ? () => <PartnerJoinApp kind="driver"/> : path.startsWith('/admin') ? AdminApp : path.startsWith('/business/menu') ? BusinessMenuApp : path.startsWith('/business') ? BusinessOrdersApp : path.startsWith('/driver') ? DriverApp : path.startsWith('/notifications') ? NotificationApp : path.startsWith('/orders') ? CustomerOrdersApp : path.startsWith('/grocery') ? GroceryApp : App;
+const Root = path.startsWith('/join/business') ? () => <PartnerJoinApp kind="business"/> : path.startsWith('/join/driver') ? () => <PartnerJoinApp kind="driver"/> : path.startsWith('/admin') ? AdminApp : path.startsWith('/business/menu') ? BusinessMenuApp : path.startsWith('/business') ? BusinessOrdersApp : path.startsWith('/driver') ? DriverApp : path.startsWith('/notifications') ? NotificationApp : path.startsWith('/orders') ? CustomerOrdersApp : path.startsWith('/grocery/store') ? GroceryStoreApp : path.startsWith('/grocery') ? GroceryApp : App;
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ThemeProvider>

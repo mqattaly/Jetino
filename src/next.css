@@ -1010,3 +1010,79 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--brand-bright);
   .report-table td { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 12px; border: 0; white-space: normal; }
   .report-table td::before { content: attr(data-label); color: var(--muted); font-size: 10.5px; }
 }
+
+/* ۲۹) فروشگاه‌ها: قفسهٔ صاحب فروشگاه و صف تأیید کارکنان */
+.store-banner { border: 1px solid var(--line); border-radius: 18px; padding: 16px; margin-bottom: 16px; display: grid; gap: 10px; background: var(--surface); }
+.store-banner.pending { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); background: linear-gradient(180deg, var(--warn-soft), var(--surface)); }
+.store-banner.active { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); background: linear-gradient(180deg, var(--ok-soft), var(--surface)); }
+.store-banner.suspended { border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); background: linear-gradient(180deg, var(--danger-soft), var(--surface)); }
+.store-banner-head { display: flex; align-items: center; gap: 10px; }
+.store-banner-head b { display: block; font-size: 1rem; }
+.store-banner-head small { color: var(--muted); font-size: 11.5px; }
+.store-banner-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; background: var(--surface-2); color: var(--brand-bright); flex: none; }
+.store-banner p { margin: 0; font-size: 12.5px; line-height: 1.95; color: var(--ink); }
+.store-banner-stats { display: flex; flex-wrap: wrap; gap: 8px; }
+.store-banner-stats span { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; padding: 5px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); }
+.store-banner-stats span.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
+.store-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.store-card-head .text-button { margin: 0; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.store-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin: 0; }
+.store-facts div { display: grid; gap: 3px; min-width: 0; }
+.store-facts dt { font-size: 10.5px; color: var(--muted); }
+.store-facts dd { margin: 0; font-size: 12.5px; line-height: 1.8; overflow-wrap: anywhere; }
+.store-product-form { display: grid; gap: 12px; padding: 14px; border: 1px dashed color-mix(in srgb, var(--brand) 35%, var(--line)); border-radius: 16px; background: var(--surface-2); }
+.store-product-row { display: grid; grid-template-columns: 130px 1fr 130px; gap: 12px; align-items: start; }
+.store-price-hint { font-size: 10.5px; color: var(--ok); }
+.store-toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; }
+.store-toggle input { width: 18px; height: 18px; accent-color: var(--brand); }
+.store-form-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.store-form-actions .btn, .store-form-actions .text-button { width: auto; margin: 0; }
+.store-shelf { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.store-shelf-item { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
+.store-shelf-item.archived { opacity: .62; }
+.store-shelf-thumb { width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--line); color: var(--muted); overflow: hidden; }
+.store-shelf-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.store-shelf-body { display: grid; gap: 2px; min-width: 0; }
+.store-shelf-body b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.store-shelf-body small { font-size: 11px; color: var(--muted); }
+.store-shelf-body small.stock-out { color: var(--warn); }
+.store-shelf-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.store-shelf-actions .menu-edit { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; }
+.menu-edit.danger, .text-button.danger { color: var(--danger); }
+.admin-stores-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.admin-stores-filter { font-family: inherit; font-size: 11.5px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface-2); color: var(--muted); cursor: pointer; }
+.admin-stores-filter.on { background: var(--brand-soft); border-color: color-mix(in srgb, var(--brand) 45%, var(--line)); color: var(--ink); font-weight: 600; }
+.admin-stores-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.admin-store-card { border: 1px solid var(--line); border-radius: 16px; background: var(--surface-2); padding: 12px 14px; display: grid; gap: 10px; }
+.admin-store-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.admin-store-head b { font-size: 13.5px; }
+.admin-store-meta { font-size: 10.5px; color: var(--muted); }
+.admin-store-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; padding: 3px 9px; border-radius: 999px; margin-inline-start: 8px; border: 1px solid var(--line); background: var(--surface); }
+.admin-store-pill.pending { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
+.admin-store-pill.active { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+.admin-store-pill.suspended { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
+.admin-store-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; margin: 0; }
+.admin-store-facts div { display: grid; gap: 2px; min-width: 0; }
+.admin-store-facts dt { font-size: 10px; color: var(--muted); }
+.admin-store-facts dd { margin: 0; font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.admin-store-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.admin-store-actions .admin-store-btn { width: auto; margin: 0; }
+.admin-store-actions .text-button { margin: 0; }
+.admin-store-note { display: grid; gap: 5px; font-size: 10.5px; color: var(--muted); }
+@media (max-width: 640px) {
+  .grocery-grid-2, .store-facts, .admin-store-facts { grid-template-columns: 1fr; }
+  .store-product-row { grid-template-columns: 1fr 1fr; }
+  .store-product-row .checkout-label:first-child { grid-column: 1 / -1; }
+  .store-shelf-item { grid-template-columns: 40px minmax(0, 1fr); }
+  .store-shelf-thumb { width: 40px; height: 40px; }
+  .store-shelf-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  .admin-store-actions .admin-store-btn { width: 100%; }
+}
+/* پیوند تازه روی عنوان صفحهٔ خرید تا هدر روی گوشی شلوغ نشود */
+.grocery-owner-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-size: 11.5px; text-decoration: none; }
+.grocery-owner-link:hover { border-color: color-mix(in srgb, var(--brand) 45%, var(--line)); }
+.store-page .ops-header-actions .text-button, .store-page .ops-header-actions .logout-button { white-space: nowrap; }
+@media (max-width: 430px) {
+  .store-page .ops-header-actions { gap: 5px; }
+  .store-page .ops-header-actions .text-button { font-size: 11px; padding: 6px 9px; }
+}
