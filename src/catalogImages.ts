@@ -18,14 +18,25 @@ const PHOTOS = {
 } satisfies Record<string, CatalogPhoto>;
 
 export const HERO_IMAGE: CatalogPhoto = {
-  src: '/images/hero-night.jpg',
-  alt: 'شب بندر خمیر؛ پیک جتینو با جعبهٔ غذای زرشکی و سبد خرید تازه روی موتور، زیر ماه کامل',
+  src: '/images/hero-feast.jpg',
+  alt: 'سفرهٔ جنوبی: کباب، ماهی سوخاری، برنج زعفرانی و سبزی تازه روی میز چوبی، زیر نور فانوس',
 };
 
-/** The night-time doorstep scene that illustrates the supermarket flow on the storefront. */
+/** The doorstep hand-over that illustrates the supermarket flow on the storefront. */
 export const GROCERY_FLOW_IMAGE: CatalogPhoto = {
   src: '/images/grocery-flow.jpg',
-  alt: 'پیک جتینو سبد خرید پر از سبزی و نان رو دمِ خونهٔ مشتری می‌آره',
+  alt: 'پیک جتینو دو نایلون خرید پر از نان، سبزی و میوه رو دمِ خونهٔ مشتری تحویل می‌ده',
+};
+
+/** Storefront promo banners — the same photos the catalog falls back to, but with their own copy. */
+export const PROMO_FEAST_IMAGE: CatalogPhoto = {
+  src: '/images/cat-grill.jpg',
+  alt: 'سیخ‌های جوجه کباب روی زغال داغ',
+};
+
+export const PROMO_SWEETS_IMAGE: CatalogPhoto = {
+  src: '/images/cat-dessert.jpg',
+  alt: 'بستنی سنتی زعفرانی با پسته و شربت نعنا و لیمو',
 };
 
 /** Ordered so the most specific southern keywords win over the generic ones. */
@@ -36,8 +47,9 @@ const KEYWORDS: [RegExp, keyof typeof PHOTOS][] = [
   [/جوجه|جوجه‌کباب|کباب‌پز|کبابی|کوبده|چلوکباب|کباب/i, 'kebab'],
   [/زغال|گریل|برگر|پیتزا|ساندویچ|سندویچ|همبرگر|شیشلیک|بریان|جگر/i, 'grill'],
   [/خورشت|قورمه|فسنجان|قیمه|گوشت|آبگوشت|دیزی|استامبولی|لوبیا/i, 'stew'],
-  [/نان|تیرش|شیرینی|قناد|حلوا|کیک|بکری|سوهان/i, 'bakery'],
-  [/دسر|بستنی|شربت|آبمیوه|نوشیدنی|قهوه|چای|کافه|شیک/i, 'dessert'],
+  // sweets beat bread, otherwise «قنادی نخل» shows a loaf of bread instead of pastry
+  [/قناد|شیرینی|کیک|بستنی|دسر|شربت|آبمیوه|نوشیدنی|قهوه|چای|کافه|شیک/i, 'dessert'],
+  [/نان|تیرش|بکری|حلوا|سوهان|خمیر/i, 'bakery'],
 ];
 
 const ORDER: (keyof typeof PHOTOS)[] = ['kebab', 'grill', 'seafood', 'stew', 'bakery', 'dessert', 'grocery'];

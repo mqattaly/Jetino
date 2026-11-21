@@ -872,44 +872,102 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--brand-bright);
 }
 .quick-actions .grocery-tile svg { background: color-mix(in srgb, var(--brand) 26%, transparent); color: #fff; }
 .trust-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.grocery-band {
-  display: grid; grid-template-columns: 1.02fr .98fr; align-items: stretch;
-  margin: 24px 0 34px; border-radius: var(--r-hero); overflow: hidden;
-  border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow-sm);
+.offers { padding-top: 34px; }
+.offer-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
+.offer-card {
+  display: grid; grid-template-rows: auto 1fr; padding: 0; text-align: right; color: inherit;
+  border: 1px solid var(--line); border-radius: var(--r-card); overflow: hidden;
+  background: var(--surface); box-shadow: var(--shadow-sm);
+  transition: transform .32s var(--spring), box-shadow .3s var(--ease), border-color .3s var(--ease);
 }
-.grocery-band-copy { display: grid; gap: 12px; align-content: center; padding: clamp(22px, 3vw, 38px); }
-.grocery-band-copy .eyebrow { color: color-mix(in srgb, var(--teal) 72%, var(--ink)); display: inline-flex; align-items: center; gap: 7px; }
-.grocery-band-copy h2 { font-size: clamp(21px, 2.4vw, 29px); line-height: 1.55; margin: 0; color: var(--ink); }
-.grocery-band-copy h2 em { font-style: normal; color: var(--brand-bright); }
-.grocery-band-copy > p { margin: 0; font-size: 13px; line-height: 2.1; color: var(--ink-2); }
-.grocery-band-steps { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 9px; }
-.grocery-band-steps li { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: center; padding: 10px 12px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); }
-.grocery-band-steps b { grid-row: span 2; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 9px; font-size: 12px; background: color-mix(in srgb, var(--teal) 22%, transparent); color: color-mix(in srgb, var(--teal) 80%, var(--ink)); }
-.grocery-band-steps span { font-size: 12.5px; font-weight: 700; color: var(--ink); }
-.grocery-band-steps small { font-size: 10.5px; color: var(--muted); }
-.grocery-band-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
-.grocery-band-cta { display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px; border-radius: var(--r-pill); background: var(--brand); color: #fff; font-size: 12.5px; font-weight: 800; text-decoration: none; box-shadow: 0 12px 26px color-mix(in srgb, var(--brand) 34%, transparent); transition: transform var(--t-fast) var(--spring), background var(--t-fast) var(--ease); }
-.grocery-band-cta:hover { transform: translateY(-2px); background: var(--brand-bright); }
-.grocery-band-cta svg { transform: rotate(180deg); }
-.grocery-band-note { font-size: 10.5px; color: var(--muted); line-height: 1.9; max-width: 280px; }
-.grocery-band-media { position: relative; min-height: 300px; }
-.grocery-band-media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.grocery-band-media { border-inline-start: 1px solid var(--line); }
-@media (max-width: 900px) {
+.offer-card:hover {
+  transform: translateY(-3px); box-shadow: var(--shadow-md);
+  border-color: color-mix(in srgb, var(--brand) 26%, var(--line));
+}
+.offer-card-media { position: relative; height: clamp(150px, 17vw, 205px); overflow: hidden; }
+.offer-card-media img { width: 100%; height: 100%; object-fit: cover; transition: transform .5s var(--ease); }
+.offer-card:hover .offer-card-media img { transform: scale(1.06); }
+.offer-card-media::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(to top, rgba(6, 16, 26, .42), rgba(6, 16, 26, 0) 56%);
+}
+.offer-badge {
+  position: absolute; top: 11px; inset-inline-start: 11px; z-index: 1;
+  padding: 5px 11px; border-radius: var(--r-pill); background: rgba(255, 255, 255, .93);
+  color: #0f1b2a; font-size: 10px; font-weight: 800; backdrop-filter: blur(6px);
+}
+.offer-body { display: grid; gap: 5px; padding: 13px 15px 15px; }
+.offer-body h3 { margin: 0; font-size: 15px; color: var(--ink); }
+.offer-body p { margin: 0; font-size: 10.5px; color: var(--muted); }
+.offer-meta {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-top: 6px; font-size: 10.5px; color: var(--muted);
+}
+.offer-meta > span { display: inline-flex; align-items: center; gap: 5px; }
+.offer-meta svg { color: var(--brand-bright); }
+.offer-cta { font-weight: 800; color: color-mix(in srgb, var(--brand) 84%, var(--ink)); }
+.offer-cta svg { transform: rotate(180deg); transition: transform .25s var(--ease); }
+.offer-card:hover .offer-cta svg { transform: rotate(180deg) translateX(2px); }
+
+.banner-row { display: grid; grid-template-columns: 1.1fr 1fr .9fr; gap: 16px; margin: 30px 0 6px; }
+.promo {
+  position: relative; display: grid; align-content: end; gap: 8px; isolation: isolate;
+  min-height: clamp(240px, 26vw, 300px); padding: clamp(20px, 2.6vw, 30px);
+  border-radius: var(--r-hero); overflow: hidden; color: #f4f9ff; box-shadow: var(--shadow-md);
+}
+.promo img { position: absolute; inset: 0; z-index: -2; width: 100%; height: 100%; object-fit: cover; }
+.promo::after {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background: linear-gradient(to top, rgba(6, 16, 26, .96) 4%, rgba(6, 16, 26, .84) 40%, rgba(6, 16, 26, .5) 72%, rgba(6, 16, 26, .14) 94%);
+}
+.promo .eyebrow {
+  color: rgba(240, 247, 255, .92); font-size: 11px; font-weight: 700;
+  display: inline-flex; align-items: center; gap: 7px;
+  text-shadow: 0 2px 10px rgba(4, 12, 20, .65);
+}
+.promo .eyebrow svg { color: var(--brand-bright); }
+.promo h2 {
+  margin: 0; font-size: clamp(20px, 2.5vw, 28px); line-height: 1.5;
+  letter-spacing: -.02em; color: #f7fbff; text-shadow: 0 3px 18px rgba(4, 12, 20, .55);
+}
+.promo h2 em { font-style: normal; color: color-mix(in srgb, var(--brand-bright) 74%, #ffffff); }
+.promo p { margin: 0; max-width: 46ch; font-size: 12.5px; line-height: 2; color: rgba(234, 243, 251, .9); text-shadow: 0 2px 12px rgba(4, 12, 20, .6); }
+.promo-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+.promo-cta {
+  display: inline-flex; align-items: center; gap: 8px; padding: 11px 18px; border: 0; cursor: pointer;
+  border-radius: var(--r-pill); background: #ffffff; color: #0c1a29;
+  font: inherit; font-size: 12.5px; font-weight: 800; text-decoration: none;
+  transition: transform .18s var(--spring), box-shadow .25s var(--ease);
+}
+.promo-cta svg { transform: rotate(180deg); }
+.promo-cta:hover { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(3, 10, 18, .35); }
+.promo-note { font-size: 10.5px; color: rgba(226, 238, 248, .74); }
+@media (max-width: 980px) {
   .trust-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .grocery-band { grid-template-columns: 1fr; }
-  .grocery-band-media { order: -1; min-height: 190px; border-inline-start: 0; border-bottom: 1px solid var(--line); }
-  .grocery-band-note { max-width: none; }
+  .offer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .banner-row { grid-template-columns: 1fr; }
   .tabbar { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; }
   .tabbar a, .tabbar button { font-size: 9px; padding: 8px 2px; }
+}
+@media (max-width: 640px) {
+  .offers { padding-top: 26px; }
+  .offer-grid { grid-template-columns: 1fr; gap: 12px; }
+  .offer-card { grid-template-columns: 118px 1fr; grid-template-rows: 1fr; }
+  .offer-card-media { height: 100%; min-height: 112px; }
+  .offer-card-media::after { background: linear-gradient(to left, rgba(6, 16, 26, .34), rgba(6, 16, 26, 0) 62%); }
+  .offer-body { align-content: center; padding: 12px 14px; }
+  .promo { min-height: 232px; }
+  .promo p { font-size: 11.5px; }
+  .promo-note { display: none; }
 }
 @media (max-width: 720px) {
   /* the story (food box + grocery basket) stays visible behind the headline on phones */
   .hero::after {
     background:
-      linear-gradient(165deg, rgba(9, 20, 33, .93) 12%, rgba(9, 20, 33, .8) 58%, rgba(9, 20, 33, .62)),
-      radial-gradient(80% 60% at 12% 18%, rgba(9, 20, 33, 0), rgba(9, 20, 33, .35));
+      linear-gradient(170deg, rgba(9, 20, 33, .86) 6%, rgba(9, 20, 33, .68) 46%, rgba(9, 20, 33, .34) 78%, rgba(9, 20, 33, .18)),
+      radial-gradient(80% 60% at 12% 18%, rgba(9, 20, 33, 0), rgba(9, 20, 33, .3));
   }
+  .hero-media img { object-position: 44% 60%; }
   .hero-copy { padding-bottom: 44px; }
   .hero-note { flex-wrap: wrap; row-gap: 8px; column-gap: 12px; }
   .hero-note span { font-size: 10px; padding: 6px 9px; background: rgba(9, 20, 33, .58); }

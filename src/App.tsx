@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Search, MapPin, ShoppingBag, ChevronDown, Plus, Minus, X, ArrowLeft, Utensils, Bike, ShieldCheck, Clock3, Home, ClipboardList, Bell, Fish, ChefHat, Coffee, CakeSlice, Sparkles, Store, Wallet, ShoppingBasket } from 'lucide-react';
 import CheckoutFlow, { OrderSuccess } from './CheckoutFlow';
 import { SkeletonCards, SkeletonDishes } from './ui/motion';
-import { GROCERY_FLOW_IMAGE, HERO_IMAGE, photoFor } from './catalogImages';
+import { GROCERY_FLOW_IMAGE, HERO_IMAGE, PROMO_FEAST_IMAGE, PROMO_SWEETS_IMAGE, photoFor } from './catalogImages';
 
 type Restaurant={id:string;name:string;description:string|null;regionName:string;regionSlug:string;deliveryFeeRial:string|null;categories:string[];accent:string;icon:string;time:string};
 type Product={id:string;name:string;description:string|null;priceRial:string;imageUrl?:string|null};
@@ -42,6 +42,51 @@ function App(){
     <button type="button" className="tile-btn" onClick={()=>{window.location.href='/orders';}}><ClipboardList size={22}/><span>پیگیری سفارش</span></button>
     <button type="button" className="tile-btn" onClick={()=>{window.location.href='/join/driver';}}><Bike size={22}/><span>پیک شو</span></button>
 </section>
+  <section id="offers" className="offers" aria-labelledby="offers-title">
+    <div className="section-head">
+      <div><div className="eyebrow muted">پیشنهاد امروز جتینو</div><h2 id="offers-title">امروز از این‌ها شروع کن</h2></div>
+      <button className="filter-button" type="button" onClick={()=>{document.getElementById('businesses')?.scrollIntoView({behavior:'smooth'});}}>همهٔ کسب‌وکارها <ChevronDown size={15}/></button>
+    </div>
+    {loading?<div className="offer-grid">{Array.from({length:3},(_,i)=><div className="sk-card" key={i} aria-hidden="true"><span className="sk sk-card-media"/><span className="sk-card-body"><span className="sk sk-line" style={{width:'68%'}}/><span className="sk sk-line sk-line-thin" style={{width:'44%'}}/></span></div>)}</div>
+    :<div className="offer-grid">{restaurants.slice(0,3).map(r=>{const photo=photoFor(r.name,...r.categories);return <button type="button" className="offer-card" key={r.id} onClick={()=>void openBusiness(r)}>
+      <div className="offer-card-media"><img src={photo.src} alt={photo.alt} loading="lazy"/><span className="offer-badge">پیشنهاد امروز</span></div>
+      <div className="offer-body"><h3>{r.name}</h3><p>{r.categories.join(' · ')||'منوی محلی'}</p><div className="offer-meta"><span><Clock3 size={13}/>{r.deliveryFeeRial===null?'ارسال نامشخص':`ارسال ${money(r.deliveryFeeRial)}`}</span><span className="offer-cta">دیدن منو <ArrowLeft size={14}/></span></div></div>
+    </button>;})}</div>}
+    {!loading&&restaurants.length===0&&<div className="empty">{loadError?`فهرست نیومد (${loadError})؛ اتصال API و دیتابیس رو چک کن.`:'فعلاً کسب‌وکاری ثبت نشده؛ کمی بعد دوباره سر بزن.'}</div>}
+  </section>
+
+  <section className="banner-row" id="grocery" aria-label="پیشنهاد و بنرهای جتینو">
+    <article className="promo">
+      <img src={GROCERY_FLOW_IMAGE.src} alt={GROCERY_FLOW_IMAGE.alt} loading="lazy"/>
+      <div className="eyebrow"><ShoppingBasket size={14}/> سوپرمارکت با جتینو</div>
+      <h2>سبد خرید خونه،<br/><em>دمِ در تحویل</em></h2>
+      <p>لیست خریدت رو می‌نویسی، پیک محلی قیمت مأموریت می‌ده و خرید انجام می‌شه. این‌جا فقط بنر است؛ ورود به سوپرمارکت با یک دکمه.</p>
+      <div className="promo-actions">
+        <a className="promo-cta" href="/grocery">ورود به سوپرمارکت <ArrowLeft size={16}/></a>
+        <span className="promo-note">فاکتور را خودت تأیید می‌کنی</span>
+      </div>
+    </article>
+    <article className="promo">
+      <img src={PROMO_FEAST_IMAGE.src} alt={PROMO_FEAST_IMAGE.alt} loading="lazy"/>
+      <div className="eyebrow"><Utensils size={14}/> آشپزخونه‌های محلی</div>
+      <h2>غذای داغ،<br/><em>همون‌جا روی زغال</em></h2>
+      <p>کباب، قلیه ماهی، خورشت و نان تازه از کسب‌وکارهای بندر خمیر؛ سفارش بده و داغ به دستت برسه.</p>
+      <div className="promo-actions">
+        <button className="promo-cta" type="button" onClick={()=>{document.getElementById('businesses')?.scrollIntoView({behavior:'smooth'});}}>دیدن منوی امروز <ArrowLeft size={16}/></button>
+        <span className="promo-note">هزینهٔ ارسال شفاف، قبل از ثبت</span>
+      </div>
+    </article>
+    <article className="promo">
+      <img src={PROMO_SWEETS_IMAGE.src} alt={PROMO_SWEETS_IMAGE.alt} loading="lazy"/>
+      <div className="eyebrow"><CakeSlice size={14}/> کافه و دسر</div>
+      <h2>شیرینی و بستنی،<br/><em>برای بعدِ غذا</em></h2>
+      <p>بستنی سنتی زعفرانی، شربت نعنا و لیمو و شیرینی تازهٔ قنادی‌های شهر.</p>
+      <div className="promo-actions">
+        <button className="promo-cta" type="button" onClick={()=>{document.getElementById('businesses')?.scrollIntoView({behavior:'smooth'});}}>دیدن کافه‌ها <ArrowLeft size={16}/></button>
+      </div>
+    </article>
+  </section>
+
   <section className="trust-strip">
     <div><strong>محلی و نزدیک</strong><span>رستوران‌ها و سوپرمارکت‌های شهر</span></div>
     <div><strong>غذا و خرید</strong><span>یک اپ، دو سرویس</span></div>
@@ -50,27 +95,7 @@ function App(){
     <span className="strip-icon">✳</span>
   </section>
 
-  <section id="grocery" className="grocery-band" aria-labelledby="grocery-title">
-    <div className="grocery-band-copy">
-      <div className="eyebrow"><ShoppingBasket size={14}/> سوپرمارکت با جتینو</div>
-      <h2 id="grocery-title">لیست بنویس،<br/><em>پیک خرید رو میاره</em></h2>
-      <p>لازم نیست از خونه بیرون بزنی. لیست خریدتو می‌نویسی، پیک‌های محلی قیمت ماموریت می‌دن و بعد از پرداخت کرایه، خرید انجام می‌شه و دمِ در تحویلش می‌گیری.</p>
-      <ol className="grocery-band-steps">
-        <li><b>۱</b><span>لیست رو بنویس</span><small>«۲ کیلو سیب، نان، ماست و…»</small></li>
-        <li><b>۲</b><span>پیشنهاد پیک رو ببین</span><small>قیمت ماموریت شفافه و خودت انتخاب می‌کنی</small></li>
-        <li><b>۳</b><span>فاکتور و تحویل</span><small>فاکتور رو تأیید می‌کنی، حساب می‌کنی و زنده پیگیری می‌کنی</small></li>
-      </ol>
-      <div className="grocery-band-actions">
-        <a className="grocery-band-cta" href="/grocery">شروع خرید خونه <ArrowLeft size={16}/></a>
-        <span className="grocery-band-note">سوپرمارکت‌های شهر هم به‌زودی سبد محصولاتشون رو می‌گذارن.</span>
-      </div>
-    </div>
-    <div className="grocery-band-media">
-      <img src={GROCERY_FLOW_IMAGE.src} alt={GROCERY_FLOW_IMAGE.alt} loading="lazy"/>
-    </div>
-  </section>
-
-  <section id="businesses" className="listing"><div className="section-head"><div><div className="eyebrow muted">از آشپزخونه تا قفسهٔ سوپرمارکت</div><h2>امروز چی می‌خوای؟</h2></div><span className="filter-button">{filtered.length} کسب‌وکار <ChevronDown size={15}/></span></div><div className="categories">{categories.map((c,i)=>{const Icon=[Sparkles,Fish,ChefHat,Coffee,CakeSlice,Utensils][i%6]||Utensils;return <button key={c} className={category===c?'chosen':''} onClick={()=>setCategory(c)}><Icon size={14}/>{c}</button>;})}</div><div className="result-count">{loading?'دارم فهرست کسب‌وکارها رو می‌گیرم…':`${filtered.length} کسب‌وکار برای انتخاب تو · غذا یا خرید خونه`}</div>{loading?<SkeletonCards count={6}/>:<div className="restaurant-grid">{filtered.map(r=><button className="restaurant-card" key={r.id} onClick={()=>void openBusiness(r)}><div className={`restaurant-image ${r.accent}`}><img className="object-cover" src={photoFor(r.name,...r.categories).src} alt="" loading="lazy"/><span className="ribbon">{r.regionName}</span><span className="photo-label">تصویر پیشنهادی</span></div><div className="card-info"><div className="card-title"><h3>{r.name}</h3><span className="rating"><MapPin size={13}/>محلی</span></div><p>{r.categories.join(' · ')||'منوی غذایی'}</p><div className="card-meta"><span><Clock3 size={14}/>{r.time}</span><span className="dot">·</span><span>ارسال {r.deliveryFeeRial===null?'هزینه نامشخص':money(r.deliveryFeeRial)}</span></div></div></button>)}</div>}{!loading&&filtered.length===0&&<div className="empty">{loadError?`فهرست نیومد (${loadError})؛ اتصال API و دیتابیس رو چک کن.`:'این دسته هنوز کسب‌وکاری نداره؛ یه دستهٔ دیگه رو امتحان کن.'}</div>}</section>
+  <section id="businesses" className="listing"><div className="section-head"><div><div className="eyebrow muted">فهرست کامل محلی</div><h2>کسب‌وکارهای بندر خمیر</h2></div><span className="filter-button">{filtered.length} کسب‌وکار <ChevronDown size={15}/></span></div><div className="categories">{categories.map((c,i)=>{const Icon=[Sparkles,Fish,ChefHat,Coffee,CakeSlice,Utensils][i%6]||Utensils;return <button key={c} className={category===c?'chosen':''} onClick={()=>setCategory(c)}><Icon size={14}/>{c}</button>;})}</div><div className="result-count">{loading?'دارم فهرست کسب‌وکارها رو می‌گیرم…':`${filtered.length} کسب‌وکار برای انتخاب تو · غذا یا خرید خونه`}</div>{loading?<SkeletonCards count={6}/>:<div className="restaurant-grid">{filtered.map(r=><button className="restaurant-card" key={r.id} onClick={()=>void openBusiness(r)}><div className={`restaurant-image ${r.accent}`}><img className="object-cover" src={photoFor(r.name,...r.categories).src} alt="" loading="lazy"/><span className="ribbon">{r.regionName}</span><span className="photo-label">تصویر پیشنهادی</span></div><div className="card-info"><div className="card-title"><h3>{r.name}</h3><span className="rating"><MapPin size={13}/>محلی</span></div><p>{r.categories.join(' · ')||'منوی غذایی'}</p><div className="card-meta"><span><Clock3 size={14}/>{r.time}</span><span className="dot">·</span><span>ارسال {r.deliveryFeeRial===null?'هزینه نامشخص':money(r.deliveryFeeRial)}</span></div></div></button>)}</div>}{!loading&&filtered.length===0&&<div className="empty">{loadError?`فهرست نیومد (${loadError})؛ اتصال API و دیتابیس رو چک کن.`:'این دسته هنوز کسب‌وکاری نداره؛ یه دستهٔ دیگه رو امتحان کن.'}</div>}</section>
   <section className="how" id="how">
     <div className="how-heading">
       <div className="eyebrow muted">دو سرویس، یک پیک</div>
