@@ -122,7 +122,7 @@ export default function GroceryApp() {
   }, [token]);
 
   useEffect(() => {
-    document.title = 'خرید از سوپرمارکت | جتینو';
+    document.title = 'خرید خونه از سوپرمارکت | جتینو';
     if (!token) return;
     void Promise.all([loadList(token), loadAddresses(token)]).catch((e: Error) => setError(e.message));
     const timer = window.setInterval(() => { void loadList(token).catch(() => { /* offline is fine */ }); if (selectedId) void loadDetail(selectedId, token).catch(() => { /* keep the last view */ }); }, 20_000);
