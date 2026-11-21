@@ -14,7 +14,7 @@ type AuthRequest = Request & { user: { sub: string; roles: string[] } };
 export class GroceryController {
   constructor(@Inject(GroceryService) private readonly grocery: GroceryService) {}
 
-  @Post('lists') create(@Req() req: AuthRequest, @Body() body: { itemsText?: unknown; storeName?: unknown; note?: unknown; addressId?: unknown }, @Headers('idempotency-key') key?: string) {
+  @Post('lists') create(@Req() req: AuthRequest, @Body() body: { itemsText?: unknown; storeName?: unknown; storeId?: unknown; note?: unknown; addressId?: unknown }, @Headers('idempotency-key') key?: string) {
     return this.grocery.create(req.user, body ?? {}, key);
   }
   @Get('lists/mine') mine(@Req() req: AuthRequest) { return this.grocery.mine(req.user); }
