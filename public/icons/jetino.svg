@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="جتینو">
+  <rect width="512" height="512" rx="112" fill="#e2603a"/>
+  <path d="M336 104c40 26 44 82 6 116-30-26-32-82-6-116z" fill="#fff8ec"/>
+  <g fill="none" stroke="#fff8ec" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M204 236c-26-22 6-38-10-62"/>
+    <path d="M262 240c-28-28 8-46-8-78"/>
+    <path d="M318 236c-26-22 6-38-10-62"/>
+    <path d="M118 296h276c-6 96-62 152-138 152S124 392 118 296z"/>
+  </g>
+</svg>

@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: jetino
+      POSTGRES_USER: jetino
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jetino_local_only}
+    ports:
+      - "5432:5432"
+    volumes:
+      - jetino_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jetino -d jetino"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  jetino_postgres:

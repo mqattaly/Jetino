@@ -1,0 +1,42 @@
+/* Shared brand tokens for the modern interface. */
+:root{
+  --canvas:#f7f6f2;
+  --surface:#ffffff;
+  --surface-2:#f1f1ea;
+  --surface-3:#e7e7dd;
+  --ink:#1b2a23;
+  --ink-2:#31423a;
+  --muted:#68736b;
+  --faint:#949d96;
+  --line:#e5e5db;
+  --line-2:#d6d6ca;
+  --brand:#e2603a;
+  --brand-2:#c84c2a;
+  --brand-soft:#fdeade;
+  --pine:#1f3a30;
+  --pine-2:#2c4c40;
+  --pine-3:#41685a;
+  --cream:#fff8ec;
+  --gold:#dda43a;
+  --gold-soft:#fbf1da;
+  --ok:#2f7d4f;
+  --ok-soft:#e4f2e7;
+  --warn:#96682a;
+  --warn-soft:#fbf1da;
+  --danger:#b0362d;
+  --danger-soft:#fbeae7;
+  --teal:#4d8d7c;
+  --teal-soft:#e6f0ed;
+  --r-xs:6px;
+  --r-sm:10px;
+  --r-md:14px;
+  --r-lg:20px;
+  --r-xl:26px;
+  --r-2xl:34px;
+  --shadow-sm:0 1px 2px rgba(24,38,31,.05),0 2px 8px rgba(24,38,31,.05);
+  --shadow-md:0 2px 6px rgba(24,38,31,.06),0 14px 34px rgba(24,38,31,.09);
+  --shadow-lg:0 10px 24px rgba(24,38,31,.10),0 40px 80px rgba(24,38,31,.16);
+  --shadow-brand:0 10px 26px rgba(226,96,58,.28);
+  --ease:cubic-bezier(.22,.68,.24,1);
+  --ring:0 0 0 3px color-mix(in srgb, var(--brand) 32%, transparent);
+}
