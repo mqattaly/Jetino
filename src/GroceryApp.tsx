@@ -35,16 +35,16 @@ const cardText = (value: string) => faDigits(value).replace(/(.{4})/g, '$1 ').tr
 const when = (value: string | null) => value ? new Intl.DateTimeFormat('fa-IR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : '';
 
 const STATUS: Record<string, { label: string; cls: string }> = {
-  OPEN: { label: 'در انتظار پیشنهاد پیک', cls: 'status-preparing' },
+  OPEN: { label: 'منتظر پیشنهاد پیک', cls: 'status-preparing' },
   ASSIGNED: { label: 'پیک انتخاب شد', cls: 'status-confirmed' },
-  SHOPPING: { label: 'پیک در فروشگاه', cls: 'status-preparing' },
-  INVOICE_SENT: { label: 'فاکتور آمادهٔ تأیید', cls: 'status-preparing' },
-  AWAITING_PAYMENT: { label: 'در انتظار پرداخت', cls: 'status-preparing' },
+  SHOPPING: { label: 'پیک تو فروشگاهه', cls: 'status-preparing' },
+  INVOICE_SENT: { label: 'فاکتور آمادهٔ تأییده', cls: 'status-preparing' },
+  AWAITING_PAYMENT: { label: 'منتظر پرداخت', cls: 'status-preparing' },
   PAID: { label: 'رسید ثبت شد', cls: 'status-confirmed' },
   PAYMENT_CONFIRMED: { label: 'پرداخت تأیید شد', cls: 'status-confirmed' },
   DELIVERED: { label: 'تحویل شد', cls: 'status-delivered' },
   CANCELLED: { label: 'لغو شد', cls: 'status-rejected' },
-  EXPIRED: { label: 'بدون پیشنهاد', cls: 'status-rejected' },
+  EXPIRED: { label: 'پیشنهادی نیومد', cls: 'status-rejected' },
 };
 
 async function request<T>(path: string, token: string, init: RequestInit = {}): Promise<T> {
@@ -69,7 +69,7 @@ function Countdown({ to }: { to: string | null }) {
   const minutes = Math.floor(left / 60000);
   const seconds = Math.floor((left % 60000) / 1000);
   return <span className={`grocery-countdown${left === 0 ? ' done' : ''}`}>
-    <Clock3 size={13} />{left === 0 ? 'مهلت تمام شد' : `${fa(minutes)}:${String(seconds).padStart(2, '0')} باقی مانده`}
+    <Clock3 size={13} />{left === 0 ? 'مهلت تموم شد' : `${fa(minutes)}:${String(seconds).padStart(2, '0')} باقی مونده`}
   </span>;
 }
 
@@ -147,27 +147,27 @@ export default function GroceryApp() {
     });
     setDetail(created); setOpen(false); setForm({ itemsText: '', storeName: '', note: '', addressId: form.addressId });
     await loadList();
-    setNotice('لیست ثبت شد؛ پیک‌های منطقه تا ۱۵ دقیقه پیشنهاد می‌دهند.');
+    setNotice('لیست ثبت شد؛ پیک‌های منطقه تا ۱۵ دقیقه پیشنهاد می‌دن.');
   });
 
   const accept = (bidId: string) => run(async () => {
     setDetail(await request<Detail>(`/api/v1/grocery/lists/${selectedId}/bids/${bidId}/accept`, token, { method: 'POST' }));
     await loadList();
-    setNotice('پیک انتخاب شد؛ کرایهٔ ماموریت را پرداخت کنید تا خرید شروع شود.');
+    setNotice('پیک انتخاب شد؛ کرایهٔ ماموریت رو حساب کن تا خرید شروع بشه.');
   });
 
   const payFee = () => run(async () => {
-    if (!feeProof) throw new Error('عکس رسید پرداخت را بارگذاری کنید.');
+    if (!feeProof) throw new Error('عکس رسید پرداخت رو بذار.');
     setDetail(await request<Detail>(`/api/v1/grocery/lists/${selectedId}/fee-payment`, token, {
       method: 'POST', body: JSON.stringify({ method: 'CARD_TO_CARD', receiptUrl: feeProof, reference: ascii(feeRef) || undefined }),
     }));
     setFeeProof(null); setFeeRef('');
-    setNotice('رسید کرایه ثبت شد؛ پس از تأیید پشتیبانی، پیک خرید را شروع می‌کند.');
+    setNotice('رسید کرایه ثبت شد؛ بعد از تأیید پشتیبانی، پیک خرید رو شروع می‌کنه.');
   });
 
   const approveInvoice = () => run(async () => {
     setDetail(await request<Detail>(`/api/v1/grocery/lists/${selectedId}/invoice/approve`, token, { method: 'POST' }));
-    setNotice('فاکتور تأیید شد؛ حالا مبلغ کالا را کارت‌به‌کارت کنید.');
+    setNotice('فاکتور تأیید شد؛ حالا مبلغ کالا رو کارت‌به‌کارت کن.');
   });
 
   const rejectInvoice = () => run(async () => {
@@ -175,16 +175,16 @@ export default function GroceryApp() {
       method: 'POST', body: JSON.stringify({ reason: rejectReason }),
     }));
     setRejecting(false); setRejectReason('');
-    setNotice('اعتراض ثبت شد؛ پیک فاکتور را اصلاح می‌کند.');
+    setNotice('اعتراض ثبت شد؛ پیک فاکتور رو اصلاح می‌کنه.');
   });
 
   const payGoods = () => run(async () => {
-    if (!goodsProof) throw new Error('عکس رسید پرداخت را بارگذاری کنید.');
+    if (!goodsProof) throw new Error('عکس رسید پرداخت رو بذار.');
     setDetail(await request<Detail>(`/api/v1/grocery/lists/${selectedId}/payment`, token, {
       method: 'POST', body: JSON.stringify({ method: 'CARD_TO_CARD', receiptUrl: goodsProof, reference: ascii(goodsRef) || undefined }),
     }));
     setGoodsProof(null); setGoodsRef('');
-    setNotice('رسید ثبت شد؛ پیک پس از تأیید فروشنده آن را تأیید می‌کند.');
+    setNotice('رسید ثبت شد؛ پیک بعد از تأیید فروشنده تأییدش می‌کنه.');
   });
 
   const cancel = () => run(async () => {
@@ -212,9 +212,9 @@ export default function GroceryApp() {
       <BackButton />
       <div className="ops-title">
         <div>
-          <div className="eyebrow muted">یک لیست بنویس، پیک می‌خرد</div>
+          <div className="eyebrow muted">لیست بده، پیک برات می‌خره</div>
           <h1>خرید از سوپرمارکت</h1>
-          <p>لیست خریدت را بنویس؛ پیک‌های محلی قیمت ماموریت می‌دهند، یکی را انتخاب می‌کنی و پیک خرید را انجام می‌دهد.</p>
+          <p>لیست خریدتو بنویس؛ پیک‌های محلی قیمت ماموریت می‌دن، یکیشون رو انتخاب می‌کنی و خرید رو برات انجام می‌ده.</p>
         </div>
       </div>
 
@@ -226,14 +226,14 @@ export default function GroceryApp() {
 
         <div className="grocery-actions">
           <button type="button" className="btn btn-primary" onClick={() => setOpen(value => !value)}>
-            <Plus size={16} /><span>{open ? 'بستن فرم' : 'لیست خرید تازه'}</span>
+            <Plus size={16} /><span>{open ? 'بستن فرم' : 'یه لیست خرید تازه'}</span>
           </button>
         </div>
 
         {open && <section className="grocery-card">
           <h2><ShoppingBasket size={18} />لیست جدید</h2>
           <label className="checkout-label">متن لیست<textarea className="checkout-input grocery-textarea" rows={5} value={form.itemsText}
-            placeholder="مثلاً: ۲ کیلو سیب، یک شانه تخم‌مرغ، نان سنگک، ماست ۹۰۰ گرمی" onChange={e => setForm({ ...form, itemsText: e.target.value })} /></label>
+            placeholder="مثلاً: ۲ کیلو سیب، یه شونه تخم‌مرغ، نان سنگک، ماست ۹۰۰ گرمی" onChange={e => setForm({ ...form, itemsText: e.target.value })} /></label>
           <div className="grocery-grid-2">
             <label className="checkout-label">نام فروشگاه (اختیاری)<input className="checkout-input" value={form.storeName}
               placeholder="مثلاً هایپر مرکزی" onChange={e => setForm({ ...form, storeName: e.target.value })} /></label>
@@ -243,22 +243,22 @@ export default function GroceryApp() {
             </select></label>
           </div>
           <label className="checkout-label">توضیح برای پیک (اختیاری)<input className="checkout-input" value={form.note}
-            placeholder="مثلاً زنگ واحد ۲ را بزنید" onChange={e => setForm({ ...form, note: e.target.value })} /></label>
+            placeholder="مثلاً زنگ واحد ۲ رو بزن" onChange={e => setForm({ ...form, note: e.target.value })} /></label>
           <button type="button" className="btn btn-primary" disabled={busy || form.itemsText.trim().length < 5 || !form.addressId} onClick={() => void createList()}>
-            <ClipboardList size={16} /><span>ثبت لیست و دریافت پیشنهاد</span>
+            <ClipboardList size={16} /><span>ثبت لیست و گرفتن پیشنهاد</span>
           </button>
-          {addresses.length === 0 && <p className="grocery-hint">برای ثبت لیست، اول یک نشانی در <a href="/orders">سفارش‌های من</a> ثبت کنید.</p>}
+          {addresses.length === 0 && <p className="grocery-hint">برای ثبت لیست، اول یه نشانی تو <a href="/orders">سفارش‌های من</a> ثبت کن.</p>}
         </section>}
 
         <section className="grocery-card">
           <h2><ClipboardList size={18} />لیست‌های من</h2>
-          {rows.length === 0 && <p className="grocery-empty">هنوز لیستی ثبت نکرده‌اید.</p>}
+          {rows.length === 0 && <p className="grocery-empty">هنوز لیستی ثبت نکردی.</p>}
           <div className="grocery-list">
             {rows.map(row => {
               const pill = STATUS[row.status] ?? { label: row.status, cls: '' };
               return <button key={row.id} type="button" className={`grocery-row${row.id === selectedId ? ' active' : ''}`} onClick={() => void run(async () => { await loadDetail(row.id); })}>
                 <div>
-                  <b>{row.storeName || 'فروشگاه به انتخاب پیک'}</b>
+                  <b>{row.storeName || 'فروشگاه با انتخاب پیک'}</b>
                   <small>{row.itemsText.slice(0, 68)}{row.itemsText.length > 68 ? '…' : ''}</small>
                 </div>
                 <div className="grocery-row-meta">
@@ -274,7 +274,7 @@ export default function GroceryApp() {
 
         {detail && <section className="grocery-card grocery-detail">
           <div className="grocery-detail-head">
-            <h2><Store size={18} />{detail.storeName || 'فروشگاه به انتخاب پیک'}</h2>
+            <h2><Store size={18} />{detail.storeName || 'فروشگاه با انتخاب پیک'}</h2>
             {status && <span className={`status-pill ${status.cls}`}>{status.label}</span>}
           </div>
           <p className="grocery-items-text">{detail.itemsText}</p>
@@ -284,7 +284,7 @@ export default function GroceryApp() {
 
           {detail.status === 'OPEN' && <>
             <div className="grocery-deadline">مهلت پیشنهاد: <Countdown to={detail.bidDeadlineAt} /></div>
-            {pendingBids.length === 0 && <p className="grocery-empty">هنوز پیشنهادی نرسیده؛ چند دقیقه دیگر دوباره بررسی کنید.</p>}
+            {pendingBids.length === 0 && <p className="grocery-empty">هنوز پیشنهادی نیومده؛ چند دقیقهٔ دیگه یه سر بزن.</p>}
             <div className="grocery-bids">
               {pendingBids.map(bid => <div key={bid.id} className="grocery-bid">
                 <div><b>{bid.driverName || 'پیک جتینو'}</b><small>{bid.driverPlate ? <span dir="ltr">{faDigits(bid.driverPlate)}</span> : 'پلاک ثبت نشده'}{bid.note ? ` · ${bid.note}` : ''}</small></div>
@@ -303,9 +303,9 @@ export default function GroceryApp() {
             <div className="grocery-fee-box">
               <h3><ShieldCheck size={16} />پیش‌پرداخت کرایهٔ ماموریت</h3>
               <p>مبلغ توافق‌شده: <b>{money(detail.feeRial)}</b></p>
-              <p className="grocery-hint">برای جلوگیری از سفارش فیک، کرایه قبل از شروع خرید پرداخت می‌شود. تا تأیید پشتیبانی، پیک خرید را شروع نمی‌کند.</p>
+              <p className="grocery-hint">که سفارش الکی پیش نیاد، کرایه قبل از شروع خرید حساب می‌شه. تا پشتیبانی تأیید نکنه، پیک خرید رو شروع نمی‌کنه.</p>
               {detail.feeConfirmedAt
-                ? <div className="grocery-alert ok"><BadgeCheck size={16} />کرایه تأیید شد؛ پیک خرید را شروع می‌کند.</div>
+                ? <div className="grocery-alert ok"><BadgeCheck size={16} />کرایه تأیید شد؛ پیک خرید رو شروع می‌کنه.</div>
                 : detail.feeDeadlineAt && <div className="grocery-deadline">مهلت پرداخت کرایه: <Countdown to={detail.feeDeadlineAt} /></div>}
               {!detail.feeConfirmedAt && feeCard && <>
                 {feeCard.enabled && <>
@@ -320,9 +320,9 @@ export default function GroceryApp() {
                     <ShieldCheck size={16} /><span>ثبت رسید کرایه</span>
                   </button>
                 </>}
-                {!feeCard.enabled && <div className="grocery-alert error">{feeCard.note || 'شمارهٔ کارت هنوز تنظیم نشده است.'}</div>}
+                {!feeCard.enabled && <div className="grocery-alert error">{feeCard.note || 'شمارهٔ کارت هنوز تنظیم نشده.'}</div>}
               </>}
-              {online && <p className={`grocery-hint${online.enabled ? '' : ' muted'}`}>پرداخت آنلاین: {online.enabled ? 'در حال راه‌اندازی' : 'درگاه هنوز وصل نشده است'} — فعلاً کارت‌به‌کارت فعال است.</p>}
+              {online && <p className={`grocery-hint${online.enabled ? '' : ' muted'}`}>پرداخت آنلاین: {online.enabled ? 'در حال راه‌اندازی' : 'درگاه هنوز وصل نشده است'} — فعلاً کارت‌به‌کارت فعاله.</p>}
             </div>
           </>}
 
@@ -343,7 +343,7 @@ export default function GroceryApp() {
                 <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => setRejecting(value => !value)}><XCircle size={16} /><span>اعتراض دارم</span></button>
               </div>
               {rejecting && <div className="grocery-invoice-reject">
-                <label className="checkout-label">دلیل اعتراض<input className="checkout-input" value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="مثلاً قیمت تخم‌مرغ اشتباه است" /></label>
+                <label className="checkout-label">دلیل اعتراض<input className="checkout-input" value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="مثلاً قیمت تخم‌مرغ اشتباهه" /></label>
                 <button type="button" className="btn btn-danger btn-sm" disabled={busy || rejectReason.trim().length < 5} onClick={() => void rejectInvoice()}>ارسال اعتراض</button>
               </div>}
             </div>
@@ -369,11 +369,11 @@ export default function GroceryApp() {
             </div>
           </>}
 
-          {detail.status === 'PAID' && <div className="grocery-alert ok"><Clock3 size={16} />رسید ثبت شد؛ پیک با فروشنده هماهنگ می‌کند و تأیید می‌کند.</div>}
-          {detail.status === 'PAYMENT_CONFIRMED' && <div className="grocery-alert ok"><Truck size={16} />پرداخت تأیید شد؛ پیک در مسیر تحویل است.</div>}
-          {detail.status === 'DELIVERED' && <div className="grocery-alert ok"><BadgeCheck size={16} />این خرید تحویل شده است.</div>}
-          {(detail.status === 'CANCELLED' || detail.status === 'EXPIRED') && <div className="grocery-alert error">{detail.cancelReason || (detail.status === 'EXPIRED' ? 'تا پایان مهلت پیشنهادی نرسید.' : 'این لیست بسته شده است.')}</div>}
-          {detail.invoiceRejectReason && detail.status === 'SHOPPING' && <p className="grocery-hint">اعتراض شما ثبت شده: {detail.invoiceRejectReason}</p>}
+          {detail.status === 'PAID' && <div className="grocery-alert ok"><Clock3 size={16} />رسید ثبت شد؛ پیک با فروشنده هماهنگ می‌کنه و تأییدش می‌کنه.</div>}
+          {detail.status === 'PAYMENT_CONFIRMED' && <div className="grocery-alert ok"><Truck size={16} />پرداخت تأیید شد؛ پیک تو راهِ خونه‌ست.</div>}
+          {detail.status === 'DELIVERED' && <div className="grocery-alert ok"><BadgeCheck size={16} />این خرید تحویل شده.</div>}
+          {(detail.status === 'CANCELLED' || detail.status === 'EXPIRED') && <div className="grocery-alert error">{detail.cancelReason || (detail.status === 'EXPIRED' ? 'تا آخر مهلت پیشنهادی نیومد.' : 'این لیست بسته شده.')}</div>}
+          {detail.invoiceRejectReason && detail.status === 'SHOPPING' && <p className="grocery-hint">اعتراضت ثبت شد: {detail.invoiceRejectReason}</p>}
         </section>}
       </>}
     </main>

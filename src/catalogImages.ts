@@ -25,7 +25,7 @@ export const HERO_IMAGE: CatalogPhoto = {
 /** The night-time doorstep scene that illustrates the supermarket flow on the storefront. */
 export const GROCERY_FLOW_IMAGE: CatalogPhoto = {
   src: '/images/grocery-flow.jpg',
-  alt: 'پیک جتینو سبد خرید پر از سبزی و نان را دمِ درِ خانهٔ مشتری می‌آورد',
+  alt: 'پیک جتینو سبد خرید پر از سبزی و نان رو دمِ خونهٔ مشتری می‌آره',
 };
 
 /** Ordered so the most specific southern keywords win over the generic ones. */
