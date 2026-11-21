@@ -14,6 +14,9 @@ describe('storefront images and install icons', () => {
     assert.equal(photoFor('خورشت قورمه سبزی').src, '/images/cat-stew.jpg');
     assert.equal(photoFor('نان محلی').src, '/images/cat-bakery.jpg');
     assert.equal(photoFor('شربت لیمو').src, '/images/cat-dessert.jpg');
+    // pastry shops and cafes have their own photos, not bread and not ice cream
+    assert.equal(photoFor('قنادی نخل').src, '/images/cat-sweets.jpg');
+    assert.equal(photoFor('کافه ساحل').src, '/images/cat-coffee.jpg');
     // the supermarket service needs its own picture: grocery shops must not fall back to food
     assert.equal(photoFor('سوپرمارکت محله').src, '/images/cat-grocery.jpg');
     assert.equal(photoFor('هایپر مرکزی', 'میوه و سبزیجات').src, '/images/cat-grocery.jpg');
@@ -24,7 +27,7 @@ describe('storefront images and install icons', () => {
     assert.deepEqual(photoFor('کسب‌وکار ناشناخته'), photoFor('کسب‌وکار ناشناخته'));
   });
   it('ships every representative photo inside public', () => {
-    const terms = ['کباب', 'زغال', 'ماهی', 'خورشت', 'نان', 'شربت', 'سوپرمارکت', 'لبنیات'];
+    const terms = ['کباب', 'زغال', 'ماهی', 'خورشت', 'نان', 'شربت', 'قنادی', 'کافه', 'سوپرمارکت', 'لبنیات'];
     for (const photo of [HERO_IMAGE, GROCERY_FLOW_IMAGE, ...terms.map((term) => photoFor(term))]) {
       assert.ok(existsSync(publicFile(photo.src)), `${photo.src} should exist in the static build`);
     }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Search, MapPin, ShoppingBag, ChevronDown, Plus, Minus, X, ArrowLeft, Utensils, Bike, ShieldCheck, Clock3, Home, ClipboardList, Bell, Fish, ChefHat, Coffee, CakeSlice, Sparkles, Store, Wallet, ShoppingBasket } from 'lucide-react';
 import CheckoutFlow, { OrderSuccess } from './CheckoutFlow';
 import { SkeletonCards, SkeletonDishes } from './ui/motion';
-import { GROCERY_FLOW_IMAGE, HERO_IMAGE, PROMO_FEAST_IMAGE, PROMO_SWEETS_IMAGE, photoFor } from './catalogImages';
+import { GROCERY_FLOW_IMAGE, HERO_IMAGE, photoFor } from './catalogImages';
 
 type Restaurant={id:string;name:string;description:string|null;regionName:string;regionSlug:string;deliveryFeeRial:string|null;categories:string[];accent:string;icon:string;time:string};
 type Product={id:string;name:string;description:string|null;priceRial:string;imageUrl?:string|null};
@@ -21,6 +21,9 @@ function App(){
  useEffect(()=>{const refresh=()=>{const token=sessionStorage.getItem('jetino_customer_token');if(!token){setUnreadNotifications(0);return;}fetch('/api/v1/notifications',{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.ok?r.json():null).then(data=>{if(data&&Number.isFinite(data.unreadCount))setUnreadNotifications(data.unreadCount);}).catch(()=>{});};refresh();window.addEventListener('focus',refresh);const timer=window.setInterval(refresh,60_000);return()=>{window.removeEventListener('focus',refresh);window.clearInterval(timer);};},[]);
  const categories=useMemo(()=>['همه',...new Set(restaurants.flatMap(r=>r.categories))],[restaurants]);
  const filtered=useMemo(()=>restaurants.filter(r=>(category==='همه'||r.categories.includes(category))&&(r.name+' '+(r.description||'')+' '+r.categories.join(' ')).toLocaleLowerCase().includes(query.toLocaleLowerCase())),[restaurants,category,query]);
+ const filtering=category!=='همه'||query.trim().length>0;
+ const featured=restaurants.slice(0,3);
+ const listed=filtering?filtered:restaurants.slice(3);
  const lines=Object.values(cart);const count=lines.reduce((sum,item)=>sum+item.quantity,0);const subtotal=lines.reduce((sum,item)=>sum+BigInt(item.priceRial)*BigInt(item.quantity),0n);
  const openBusiness=async(r:Restaurant)=>{setSelected(r);setMenu([]);setMenuError('');setMenuLoading(true);try{const result=await jsonRequest<{categories:Category[]}>(`/api/v1/businesses/${r.id}`);setMenu(result.categories||[]);}catch(e){setMenuError((e as Error).message);}finally{setMenuLoading(false);}};
  const add=(product:Product,business:Restaurant)=>{setCartMessage('');if(cartBusiness&&cartBusiness!==business.id){setCartMessage('سبد خرید فقط می‌تواند از یک کسب‌وکار باشد؛ سبد فعلی را خالی کنید تا از اینجا سفارش دهید.');return;}setCartBusiness(business.id);setCart(current=>({...current,[product.id]:{productId:product.id,businessId:business.id,name:product.name,description:product.description,priceRial:String(product.priceRial),quantity:(current[product.id]?.quantity||0)+1,icon:business.icon,imageUrl:product.imageUrl??current[product.id]?.imageUrl??null}}));};
@@ -30,7 +33,7 @@ function App(){
  const checkout=()=>{setCartOpen(false);setCheckoutOpen(true);};
  return <div className="app-shell">
   <header className="topbar"><a className="brand" href="#top"><span className="brand-mark">ج</span><span>جتینو<small>محلی، راحت، نزدیک</small></span></a><div className="address"><MapPin size={17}/><span><small>محدودهٔ فعلی</small><b>بندر خمیر</b></span><ChevronDown size={15}/></div><nav><a className="active" href="#businesses"><Utensils size={15}/>غذا و خرید</a><a href="/grocery"><ShoppingBasket size={15}/>سوپرمارکت</a><a href="#how"><Sparkles size={15}/>چطور کار می‌کند؟</a><a href="/orders"><ClipboardList size={15}/>پیگیری سفارش</a><a href="/notifications" className="notification-nav-link"><Bell size={15}/>اعلان‌ها{unreadNotifications>0&&<i className="notification-nav-count">{unreadNotifications>99?'۹۹+':new Intl.NumberFormat('fa-IR').format(unreadNotifications)}</i>}</a><a href="/business/orders"><Store size={15}/>ورود کسب‌وکار</a></nav><button className="cart-top" onClick={()=>setCartOpen(true)}><ShoppingBag size={17}/><span>سبد خرید</span>{count>0&&<i>{count}</i>}</button></header>
-  <main id="top"><section className="hero"><div className="hero-media"><img src={HERO_IMAGE.src} alt="" fetchPriority="high"/></div><div className="hero-copy"><div className="eyebrow"><span className="pulse"/> غذا و خرید روزانه در بندر خمیر</div>
+  <main id="top"><section className="hero"><div className="hero-media"><img src={HERO_IMAGE.src} alt="" fetchPriority="high"/></div><div className="hero-copy"><div className="eyebrow"><span className="pulse"/> سلام! به جتینو خوش اومدی</div>
       <h1>غذای داغ، سبد پر،<br/><em>یک پیک تا دمِ خونه</em></h1>
       <p>از رستوران‌های محلی غذا بگیر یا لیست خرید خونه رو به پیک بسپار. جتینو هم آشپزخونه‌های بندر خمیر رو می‌شناسه، هم سبد خریدتو از سوپرمارکت پر می‌کنه.</p>
       <label className="searchbox"><Search size={19}/><input aria-label="جست‌وجو در رستوران، غذا یا سوپرمارکت" value={query} onChange={e=>setQuery(e.target.value)} placeholder="اسم رستوران، غذا یا سوپرمارکت رو بنویس"/></label>
@@ -48,41 +51,24 @@ function App(){
       <button className="filter-button" type="button" onClick={()=>{document.getElementById('businesses')?.scrollIntoView({behavior:'smooth'});}}>همهٔ کسب‌وکارها <ChevronDown size={15}/></button>
     </div>
     {loading?<div className="offer-grid">{Array.from({length:3},(_,i)=><div className="sk-card" key={i} aria-hidden="true"><span className="sk sk-card-media"/><span className="sk-card-body"><span className="sk sk-line" style={{width:'68%'}}/><span className="sk sk-line sk-line-thin" style={{width:'44%'}}/></span></div>)}</div>
-    :<div className="offer-grid">{restaurants.slice(0,3).map(r=>{const photo=photoFor(r.name,...r.categories);return <button type="button" className="offer-card" key={r.id} onClick={()=>void openBusiness(r)}>
+    :<div className="offer-grid">{featured.map(r=>{const photo=photoFor(r.name,...r.categories);return <button type="button" className="offer-card" key={r.id} onClick={()=>void openBusiness(r)}>
       <div className="offer-card-media"><img src={photo.src} alt={photo.alt} loading="lazy"/><span className="offer-badge">پیشنهاد امروز</span></div>
       <div className="offer-body"><h3>{r.name}</h3><p>{r.categories.join(' · ')||'منوی محلی'}</p><div className="offer-meta"><span><Clock3 size={13}/>{r.deliveryFeeRial===null?'ارسال نامشخص':`ارسال ${money(r.deliveryFeeRial)}`}</span><span className="offer-cta">دیدن منو <ArrowLeft size={14}/></span></div></div>
     </button>;})}</div>}
     {!loading&&restaurants.length===0&&<div className="empty">{loadError?`فهرست نیومد (${loadError})؛ اتصال API و دیتابیس رو چک کن.`:'فعلاً کسب‌وکاری ثبت نشده؛ کمی بعد دوباره سر بزن.'}</div>}
   </section>
 
-  <section className="banner-row" id="grocery" aria-label="پیشنهاد و بنرهای جتینو">
+  <section className="banner-row" id="grocery" aria-label="سوپرمارکت جتینو">
     <article className="promo">
       <img src={GROCERY_FLOW_IMAGE.src} alt={GROCERY_FLOW_IMAGE.alt} loading="lazy"/>
-      <div className="eyebrow"><ShoppingBasket size={14}/> سوپرمارکت با جتینو</div>
-      <h2>سبد خرید خونه،<br/><em>دمِ در تحویل</em></h2>
-      <p>لیست خریدت رو می‌نویسی، پیک محلی قیمت مأموریت می‌ده و خرید انجام می‌شه. این‌جا فقط بنر است؛ ورود به سوپرمارکت با یک دکمه.</p>
-      <div className="promo-actions">
-        <a className="promo-cta" href="/grocery">ورود به سوپرمارکت <ArrowLeft size={16}/></a>
-        <span className="promo-note">فاکتور را خودت تأیید می‌کنی</span>
-      </div>
-    </article>
-    <article className="promo">
-      <img src={PROMO_FEAST_IMAGE.src} alt={PROMO_FEAST_IMAGE.alt} loading="lazy"/>
-      <div className="eyebrow"><Utensils size={14}/> آشپزخونه‌های محلی</div>
-      <h2>غذای داغ،<br/><em>همون‌جا روی زغال</em></h2>
-      <p>کباب، قلیه ماهی، خورشت و نان تازه از کسب‌وکارهای بندر خمیر؛ سفارش بده و داغ به دستت برسه.</p>
-      <div className="promo-actions">
-        <button className="promo-cta" type="button" onClick={()=>{document.getElementById('businesses')?.scrollIntoView({behavior:'smooth'});}}>دیدن منوی امروز <ArrowLeft size={16}/></button>
-        <span className="promo-note">هزینهٔ ارسال شفاف، قبل از ثبت</span>
-      </div>
-    </article>
-    <article className="promo">
-      <img src={PROMO_SWEETS_IMAGE.src} alt={PROMO_SWEETS_IMAGE.alt} loading="lazy"/>
-      <div className="eyebrow"><CakeSlice size={14}/> کافه و دسر</div>
-      <h2>شیرینی و بستنی،<br/><em>برای بعدِ غذا</em></h2>
-      <p>بستنی سنتی زعفرانی، شربت نعنا و لیمو و شیرینی تازهٔ قنادی‌های شهر.</p>
-      <div className="promo-actions">
-        <button className="promo-cta" type="button" onClick={()=>{document.getElementById('businesses')?.scrollIntoView({behavior:'smooth'});}}>دیدن کافه‌ها <ArrowLeft size={16}/></button>
+      <div className="promo-copy">
+        <div className="eyebrow"><ShoppingBasket size={14}/> سوپرمارکت با جتینو</div>
+        <h2>سبد خرید خونه،<br/><em>دمِ در تحویل</em></h2>
+        <p>لیست خریدت رو می‌نویسی، پیک محلی قیمت مأموریت می‌ده و خرید انجام می‌شه. این‌جا فقط بنر است؛ ورود به سوپرمارکت با یک دکمه.</p>
+        <div className="promo-actions">
+          <a className="promo-cta" href="/grocery">ورود به سوپرمارکت <ArrowLeft size={16}/></a>
+          <span className="promo-note">فاکتور را خودت تأیید می‌کنی</span>
+        </div>
       </div>
     </article>
   </section>
@@ -95,7 +81,7 @@ function App(){
     <span className="strip-icon">✳</span>
   </section>
 
-  <section id="businesses" className="listing"><div className="section-head"><div><div className="eyebrow muted">فهرست کامل محلی</div><h2>کسب‌وکارهای بندر خمیر</h2></div><span className="filter-button">{filtered.length} کسب‌وکار <ChevronDown size={15}/></span></div><div className="categories">{categories.map((c,i)=>{const Icon=[Sparkles,Fish,ChefHat,Coffee,CakeSlice,Utensils][i%6]||Utensils;return <button key={c} className={category===c?'chosen':''} onClick={()=>setCategory(c)}><Icon size={14}/>{c}</button>;})}</div><div className="result-count">{loading?'دارم فهرست کسب‌وکارها رو می‌گیرم…':`${filtered.length} کسب‌وکار برای انتخاب تو · غذا یا خرید خونه`}</div>{loading?<SkeletonCards count={6}/>:<div className="restaurant-grid">{filtered.map(r=><button className="restaurant-card" key={r.id} onClick={()=>void openBusiness(r)}><div className={`restaurant-image ${r.accent}`}><img className="object-cover" src={photoFor(r.name,...r.categories).src} alt="" loading="lazy"/><span className="ribbon">{r.regionName}</span><span className="photo-label">تصویر پیشنهادی</span></div><div className="card-info"><div className="card-title"><h3>{r.name}</h3><span className="rating"><MapPin size={13}/>محلی</span></div><p>{r.categories.join(' · ')||'منوی غذایی'}</p><div className="card-meta"><span><Clock3 size={14}/>{r.time}</span><span className="dot">·</span><span>ارسال {r.deliveryFeeRial===null?'هزینه نامشخص':money(r.deliveryFeeRial)}</span></div></div></button>)}</div>}{!loading&&filtered.length===0&&<div className="empty">{loadError?`فهرست نیومد (${loadError})؛ اتصال API و دیتابیس رو چک کن.`:'این دسته هنوز کسب‌وکاری نداره؛ یه دستهٔ دیگه رو امتحان کن.'}</div>}</section>
+{(loading||listed.length>0||filtering)&&<section id="businesses" className="listing"><div className="section-head"><div><div className="eyebrow muted">فهرست کامل محلی</div><h2>کسب‌وکارهای بندر خمیر</h2></div><span className="filter-button">{filtering?filtered.length:restaurants.length} کسب‌وکار <ChevronDown size={15}/></span></div><div className="categories">{categories.map((c,i)=>{const Icon=[Sparkles,Fish,ChefHat,Coffee,CakeSlice,Utensils][i%6]||Utensils;return <button key={c} className={category===c?'chosen':''} onClick={()=>setCategory(c)}><Icon size={14}/>{c}</button>;})}</div>{loading?<SkeletonCards count={6}/>:<div className="restaurant-grid">{listed.map(r=><button className="restaurant-card" key={r.id} onClick={()=>void openBusiness(r)}><div className={`restaurant-image ${r.accent}`}><img className="object-cover" src={photoFor(r.name,...r.categories).src} alt="" loading="lazy"/><span className="ribbon">{r.regionName}</span><span className="photo-label">تصویر پیشنهادی</span></div><div className="card-info"><div className="card-title"><h3>{r.name}</h3><span className="rating"><MapPin size={13}/>محلی</span></div><p>{r.categories.join(' · ')||'منوی غذایی'}</p><div className="card-meta"><span><Clock3 size={14}/>{r.time}</span><span className="dot">·</span><span>ارسال {r.deliveryFeeRial===null?'هزینه نامشخص':money(r.deliveryFeeRial)}</span></div></div></button>)}</div>}{!loading&&listed.length===0&&<div className="empty">{loadError?`فهرست نیومد (${loadError})؛ اتصال API و دیتابیس رو چک کن.`:'این دسته هنوز کسب‌وکاری نداره؛ یه دستهٔ دیگه رو امتحان کن.'}</div>}</section>}
   <section className="how" id="how">
     <div className="how-heading">
       <div className="eyebrow muted">دو سرویس، یک پیک</div>

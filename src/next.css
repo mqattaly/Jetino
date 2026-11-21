@@ -1186,3 +1186,195 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--brand-bright);
 .verification-photos img, .verification-missing { width: 100%; min-width: 0; max-width: 100%; }
 .verification-meta { min-width: 0; overflow-wrap: anywhere; }
 .verification-photos { align-items: start; }
+
+/* ---------- ۳۰) چیدمان صفحهٔ اصلی: مقیاس استاندارد و بی‌هم‌پوشانی ---------- */
+/*
+  مقیاس‌ها (۴ و ۸ پیکسلی، مطابق الگوی رایج وب):
+  فاصله: 4 / 8 / 12 / 16 / 24 / 32 / 48
+  ارتفاع هدر: ۷۲ دسکتاپ، ۶۲ موبایل · هدف لمسی: ۴۴
+  عرض محتوا: ۱۲۴۰ داخل پوستهٔ ۱۴۴۰ · گاتر: ۱۶ موبایل، ۲۴ تبلت، ۳۲+ دسکتاپ
+  تیتر: 12 / 14 / 16 / 20 / 24 / 30 / 38 / 48
+*/
+:root {
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 24px; --space-6: 32px; --space-7: 48px;
+  --tap: 44px; --page-max: 1240px;
+  --header-h: 72px;
+}
+html { scroll-padding-top: calc(var(--header-h) + 16px); scroll-behavior: smooth; }
+#top, #offers, #grocery, #businesses, #how { scroll-margin-top: calc(var(--header-h) + 12px); }
+html, body { overflow-x: clip; }
+
+/* هدر: تا تبلت منو جمع می‌شود و تب‌بار جای آن را می‌گیرد */
+.topbar { height: var(--header-h); gap: var(--space-4); }
+.topbar .brand { flex: none; }
+.topbar .address { flex: none; }
+.topbar .cart-top { margin-inline-start: auto; min-height: var(--tap); }
+.topbar .cart-top span { white-space: nowrap; }
+
+/* ۱) هیرو: قد ثابت لازم نیست، محتوا هرگز از کارت بیرون نمی‌زند */
+.hero {
+  height: auto; min-height: clamp(330px, 38vw, 470px);
+  margin-top: var(--space-4); padding: clamp(20px, 3.2vw, 44px);
+}
+.hero-copy { width: min(560px, 58%); min-width: 0; }
+.hero h1 { font-size: clamp(28px, 3.8vw, 46px); line-height: 1.45; margin: 12px 0 8px; }
+.hero-copy > p { font-size: clamp(12.5px, 1.05vw, 14.5px); line-height: 1.95; margin-bottom: var(--space-4); max-width: 46ch; }
+.searchbox { height: 48px; width: 100%; max-width: 460px; }
+.hero-note { flex-wrap: wrap; row-gap: 8px; column-gap: 10px; margin-top: var(--space-4); }
+.hero-note span { font-size: 11px; padding: 7px 10px; border-radius: var(--r-pill); }
+
+/* ۲) دسترسی سریع: ۴ ستون تا موبایل، ۲ ستون در موبایل، همیشه ۴۴px لمسی */
+.quick-actions { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: var(--space-4); }
+.quick-actions .tile-btn {
+  min-width: 0; min-height: 92px; padding: 14px 8px; border-radius: 18px;
+  font-size: 12px; gap: 8px;
+}
+.quick-actions .tile-btn svg { width: 21px; height: 21px; padding: 11px; border-radius: 50%; box-sizing: content-box; }
+.quick-actions .tile-btn span { font-size: 12px; font-weight: 700; line-height: 1.4; text-align: center; }
+
+/* ۳) پیشنهاد امروز: کارت عکس‌دار در لپ‌تاپ، ردیف فشرده در تبلت/موبایل */
+.offers { padding-top: clamp(24px, 3vw, 40px); }
+.offers .section-head { align-items: end; gap: var(--space-3); flex-wrap: wrap; }
+.offers .section-head > div { min-width: 0; }
+.offer-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); margin-top: var(--space-4); }
+.offer-card { min-width: 0; }
+.offer-body { min-width: 0; }
+.offer-body h3 { font-size: 15px; line-height: 1.5; }
+.offer-body p { font-size: 12px; }
+.offer-meta { font-size: 11.5px; flex-wrap: wrap; row-gap: 6px; }
+.offer-cta { min-height: 32px; }
+
+/* ۴) بنر سوپرمارکت: یک بنر تمام‌عرض، متن محدود تا روی عکس گم نشود */
+.banner-row { grid-template-columns: minmax(0, 1fr); gap: var(--space-4); margin: clamp(22px, 3vw, 34px) 0 0; }
+.promo {
+  min-height: clamp(250px, 30vw, 340px); padding: clamp(18px, 3vw, 36px);
+  gap: 10px; align-content: end;
+}
+.promo-copy { display: grid; gap: 10px; max-width: 560px; min-width: 0; }
+.promo h2 { font-size: clamp(21px, 2.6vw, 30px); line-height: 1.5; }
+.promo p { font-size: clamp(12px, 1vw, 13px); line-height: 1.95; }
+.promo-actions { margin-top: var(--space-2); }
+.promo-cta { min-height: var(--tap); padding: 12px 20px; font-size: 13px; }
+
+/* ۵) نوار اعتماد: ۴ ستون در دسکتاپ، ۲ ستون در تبلت و موبایل */
+.trust-strip {
+  grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4);
+  margin: var(--space-5) 0 0; padding: 22px clamp(16px, 2.4vw, 28px);
+  border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-sm);
+}
+.trust-strip > div { padding-inline-end: 0; border-inline-start: 0; min-width: 0; }
+.trust-strip strong { font-size: 13px; }
+.trust-strip span { font-size: 11.5px; line-height: 1.7; }
+.trust-strip .strip-icon { top: 10px; inset-inline-start: -6px; }
+
+/* ۶) فهرست کسب‌وکارها */
+.listing { padding-top: clamp(26px, 3.4vw, 46px); padding-bottom: clamp(40px, 6vw, 96px); }
+.section-head { gap: var(--space-3); flex-wrap: wrap; }
+.section-head h2 { font-size: clamp(20px, 2.2vw, 27px); }
+.filter-button { min-height: 38px; padding: 8px 13px; font-size: 12px; white-space: nowrap; }
+.categories { gap: 8px; margin: var(--space-4) 0 var(--space-3); padding-bottom: 6px; }
+.categories button { min-height: 38px; padding: 8px 15px; font-size: 12px; }
+.result-count { font-size: 12px; margin-bottom: var(--space-3); }
+/* سه کارت هم‌عرض با «پیشنهاد امروز» تا ستون‌ها روی هم بیفتند */
+.restaurant-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); }
+.restaurant-card { min-width: 0; }
+.restaurant-image { height: auto; aspect-ratio: 16 / 10; }
+.card-info { min-width: 0; }
+.card-title { gap: var(--space-2); }
+.card-title h3 { font-size: 15px; line-height: 1.5; }
+.card-info p { font-size: 12px; }
+.card-meta { font-size: 11.5px; flex-wrap: wrap; row-gap: 4px; }
+.ribbon { font-size: 10px; }
+.photo-label { font-size: 10px; }
+
+/* ۷) چطور کار می‌کند */
+.how {
+  display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.6fr);
+  align-items: start; gap: clamp(18px, 3vw, 44px); text-align: start;
+  padding: clamp(20px, 3vw, 36px); margin-bottom: clamp(32px, 5vw, 64px);
+  border-radius: var(--r-xl);
+}
+.how h2 { font-size: clamp(19px, 2vw, 24px); line-height: 1.6; }
+.how-heading { text-align: start; }
+.steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4); flex-wrap: nowrap; }
+.steps > div { width: auto; min-width: 0; }
+.steps span { font-size: 13px; }
+.steps p { font-size: 11.5px; line-height: 1.85; }
+
+/* ۸) فوتر و تب‌بار: لایه‌ها و فاصلهٔ پایین صفحه */
+footer { gap: var(--space-3); flex-wrap: wrap; font-size: 11px; }
+.overlay { z-index: 40; }
+.modal, .cart-drawer { max-width: 100%; }
+
+@media (max-width: 1400px) {
+  .topbar nav a { padding: 8px 9px; font-size: 12.5px; white-space: nowrap; }
+}
+
+/* تا ۱۲۴۰ منوی متنی جمع می‌شود و تب‌بار جای آن را می‌گیرد (بدون شکستن متن هدر) */
+@media (max-width: 1240px) {
+  .topbar nav { display: none; }
+  .tabbar {
+    display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px;
+    position: fixed; z-index: 12; inset: auto 0 0 0;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); margin: 0 8px;
+    border-radius: var(--r-hero); background: var(--glass);
+    backdrop-filter: blur(18px) saturate(1.5); border: 1px solid var(--glass-line); box-shadow: var(--elev-2);
+  }
+  .tabbar a, .tabbar button { min-height: var(--tap); padding: 6px 2px; font-size: 10.5px; }
+  main { padding-bottom: 96px; }
+  footer { padding-bottom: 104px; }
+  .trust-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; }
+  .how { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 1080px) {
+  .hero-copy { width: min(560px, 70%); }
+  .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+}
+/* تبلت: دو کارت عکس‌دار در ردیف */
+@media (max-width: 1023px) {
+  .offer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+  .restaurant-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+}
+@media (max-width: 720px) {
+  :root { --header-h: 62px; }
+  .app-shell { padding: 0 16px; }
+  .topbar { gap: 10px; padding: 0 16px; margin: 0 -16px; }
+  .hero { min-height: 0; padding: 20px 18px 18px; border-radius: 22px; }
+  .hero-copy { width: 100%; }
+  .hero h1 { font-size: clamp(26px, 7.4vw, 32px); line-height: 1.42; }
+  .hero-copy > p { font-size: 12.5px; line-height: 1.95; }
+  .searchbox { max-width: none; }
+  .quick-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .restaurant-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .restaurant-card { display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: stretch; }
+  .restaurant-image { height: 100%; min-height: 112px; aspect-ratio: auto; }
+  .card-info { display: grid; align-content: center; gap: 4px; padding: 12px 14px; }
+  .card-info p { margin: 0; }
+  .card-meta { margin-top: 2px; }
+  .photo-label { display: none; }
+  .ribbon { top: 8px; right: 8px; font-size: 9.5px; padding: 4px 7px; }
+  .trust-strip { padding: 18px 16px; }
+  .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .promo { min-height: 240px; padding: 18px; }
+  .promo-note { display: none; }
+  footer { padding-bottom: 108px; }
+}
+/* موبایل: «پیشنهاد امروز» ردیف فشرده با عکس کنار */
+@media (max-width: 600px) {
+  .offer-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .offer-card { grid-template-columns: 108px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .offer-card-media { height: 100%; min-height: 108px; }
+  .offer-card-media::after { background: linear-gradient(to left, rgba(6, 16, 26, .3), rgba(6, 16, 26, 0) 62%); }
+  .offer-badge { display: none; }
+  .offer-body { align-content: center; gap: 4px; padding: 12px 14px; }
+  .offer-body h3 { font-size: 14.5px; }
+  .offer-meta { margin-top: 2px; }
+}
+@media (max-width: 380px) {
+  .app-shell { padding: 0 12px; }
+  .topbar { padding: 0 12px; margin: 0 -12px; }
+  .quick-actions .tile-btn { min-height: 84px; }
+  .hero-note span { font-size: 10.5px; padding: 6px 9px; }
+  .steps { grid-template-columns: minmax(0, 1fr); }
+}

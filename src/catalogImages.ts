@@ -12,7 +12,9 @@ const PHOTOS = {
   grill: { src: '/images/cat-grill.jpg', alt: 'سیخ‌های جوجه کباب روی زغال' },
   seafood: { src: '/images/cat-seafood.jpg', alt: 'قلیه ماهی جنوبی با سس ترش و سبزی' },
   stew: { src: '/images/cat-stew.jpg', alt: 'خورشت سبزی با لیمو عمانی و برنج' },
-  bakery: { src: '/images/cat-bakery.jpg', alt: 'نان محلی، خرما و شیرینی سنتی' },
+  bakery: { src: '/images/cat-bakery.jpg', alt: 'نان محلی تازه، نان خرما و یک استکان چای' },
+  sweets: { src: '/images/cat-sweets.jpg', alt: 'باقلوا و شیرینی سنتی با پسته و خرما در قنادی' },
+  coffee: { src: '/images/cat-coffee.jpg', alt: 'کاپوچینو با چای زعفرانی و کیک در کافه' },
   grocery: { src: '/images/cat-grocery.jpg', alt: 'سبد خرید تازه: سبزی، گوجه، خیار، نان و لبنیات' },
   dessert: { src: '/images/cat-dessert.jpg', alt: 'شربت تازه، لیمو نعنا و بستنی سنتی' },
 } satisfies Record<string, CatalogPhoto>;
@@ -28,17 +30,6 @@ export const GROCERY_FLOW_IMAGE: CatalogPhoto = {
   alt: 'پیک جتینو دو نایلون خرید پر از نان، سبزی و میوه رو دمِ خونهٔ مشتری تحویل می‌ده',
 };
 
-/** Storefront promo banners — the same photos the catalog falls back to, but with their own copy. */
-export const PROMO_FEAST_IMAGE: CatalogPhoto = {
-  src: '/images/cat-grill.jpg',
-  alt: 'سیخ‌های جوجه کباب روی زغال داغ',
-};
-
-export const PROMO_SWEETS_IMAGE: CatalogPhoto = {
-  src: '/images/cat-dessert.jpg',
-  alt: 'بستنی سنتی زعفرانی با پسته و شربت نعنا و لیمو',
-};
-
 /** Ordered so the most specific southern keywords win over the generic ones. */
 const KEYWORDS: [RegExp, keyof typeof PHOTOS][] = [
   [/قلیه|قاليه|ماهی|میگو|دریایی|سبزه|میوه دریایی/i, 'seafood'],
@@ -47,12 +38,14 @@ const KEYWORDS: [RegExp, keyof typeof PHOTOS][] = [
   [/جوجه|جوجه‌کباب|کباب‌پز|کبابی|کوبده|چلوکباب|کباب/i, 'kebab'],
   [/زغال|گریل|برگر|پیتزا|ساندویچ|سندویچ|همبرگر|شیشلیک|بریان|جگر/i, 'grill'],
   [/خورشت|قورمه|فسنجان|قیمه|گوشت|آبگوشت|دیزی|استامبولی|لوبیا/i, 'stew'],
-  // sweets beat bread, otherwise «قنادی نخل» shows a loaf of bread instead of pastry
-  [/قناد|شیرینی|کیک|بستنی|دسر|شربت|آبمیوه|نوشیدنی|قهوه|چای|کافه|شیک/i, 'dessert'],
-  [/نان|تیرش|بکری|حلوا|سوهان|خمیر/i, 'bakery'],
+  // sweets and coffee beat bread, otherwise «قنادی نخل» shows a loaf and «کافه ساحل» shows ice cream
+  [/قناد|شیرینی|باقلوا|کیک|حلوا|سوهان/i, 'sweets'],
+  [/کافه|قهوه|اسپرسو|چای|شیک/i, 'coffee'],
+  [/بستنی|دسر|شربت|آبمیوه|نوشیدنی/i, 'dessert'],
+  [/نان|تیرش|بکری|خمیر/i, 'bakery'],
 ];
 
-const ORDER: (keyof typeof PHOTOS)[] = ['kebab', 'grill', 'seafood', 'stew', 'bakery', 'dessert', 'grocery'];
+const ORDER: (keyof typeof PHOTOS)[] = ['kebab', 'grill', 'seafood', 'stew', 'bakery', 'sweets', 'coffee', 'dessert', 'grocery'];
 
 const hash = (text: string) => {
   let value = 0;
