@@ -251,28 +251,40 @@ export class GroceryService {
     return { items: result.rows };
   }
 
-  /** Open lists of the courier's own region, plus the ones already assigned to them. */
+  /**
+   * Everything the courier panel needs in one round trip: the open lists of their own region, the
+   * offers they are still waiting on, and the missions already in their hands.
+   */
   async courierBoard(user: Principal) {
     const driver = await this.driverContext(user);
     await this.expireStale();
-    const [open, assigned] = await Promise.all([
+    const [open, assigned, myBids] = await Promise.all([
       this.pool.query(
-        `SELECT g.id,g.store_name AS "storeName",g.items_text AS "itemsText",g.delivery_address_snapshot AS addressText,
+        `SELECT g.id,g.store_name AS "storeName",g.items_text AS "itemsText",g.note,
+                g.delivery_address_snapshot AS addressText,g.delivery_instructions_snapshot AS instructions,
                 g.bid_deadline_at AS "bidDeadlineAt",g.created_at AS "createdAt",
-                (SELECT count(*) FROM grocery_bids b WHERE b.list_id=g.id AND b.status='PENDING')::int AS "bidCount",
-                mine.amount_rial AS "myBidRial"
+                (SELECT count(*) FROM grocery_bids b WHERE b.list_id=g.id AND b.status='PENDING')::int AS "bidCount"
          FROM grocery_lists g
-         LEFT JOIN grocery_bids mine ON mine.list_id=g.id AND mine.driver_id=$2
-         WHERE g.region_id=$1 AND g.status='OPEN' AND g.bid_deadline_at > now() AND mine.id IS NULL
+         WHERE g.region_id=$1 AND g.status='OPEN' AND g.bid_deadline_at > now()
+           AND NOT EXISTS (SELECT 1 FROM grocery_bids mine WHERE mine.list_id=g.id AND mine.driver_id=$2)
          ORDER BY g.created_at DESC LIMIT 50`, [driver.regionId, driver.id]),
       this.pool.query(
-        `SELECT g.id,g.store_name AS "storeName",g.store_name, g.items_text AS "itemsText",g.status,g.fee_rial AS "feeRial",
-                g.invoice_amount_rial AS "invoiceAmountRial",g.delivery_address_snapshot AS addressText,
-                g.payment_deadline_at AS "paymentDeadlineAt",g.created_at AS "createdAt"
+        `SELECT g.id,g.store_name AS "storeName",g.items_text AS "itemsText",g.note,g.status,g.fee_rial AS "feeRial",
+                g.invoice_amount_rial AS "invoiceAmountRial",g.invoice_reject_reason AS "invoiceRejectReason",
+                g.delivery_address_snapshot AS addressText,g.payment_deadline_at AS "paymentDeadlineAt",
+                g.fee_confirmed_at AS "feeConfirmedAt",g.payment_receipt_url AS "paymentReceiptUrl",
+                g.created_at AS "createdAt"
          FROM grocery_lists g WHERE g.driver_id=$1 AND g.status IN ('ASSIGNED','SHOPPING','INVOICE_SENT','AWAITING_PAYMENT','PAID','PAYMENT_CONFIRMED')
          ORDER BY g.updated_at DESC LIMIT 50`, [driver.id]),
+      this.pool.query(
+        `SELECT g.id,g.store_name AS "storeName",g.items_text AS "itemsText",g.status AS "listStatus",
+                g.delivery_address_snapshot AS addressText,g.bid_deadline_at AS "bidDeadlineAt",
+                b.amount_rial AS "amountRial",b.note AS "bidNote",b.created_at AS "bidAt"
+         FROM grocery_bids b JOIN grocery_lists g ON g.id=b.list_id
+         WHERE b.driver_id=$1 AND b.status='PENDING' AND g.status='OPEN'
+         ORDER BY b.created_at DESC LIMIT 30`, [driver.id]),
     ]);
-    return { open: open.rows, assigned: assigned.rows };
+    return { open: open.rows, assigned: assigned.rows, myBids: myBids.rows };
   }
 
   async bid(user: Principal, id: string, body: { amountRial?: unknown; note?: unknown }) {

@@ -431,4 +431,29 @@ describe('GroceryService · text shopping list', () => {
     assert.equal(forCourier.bids.length, 1);
     assert.equal((forCourier.bids[0] as Row).driverUserId, undefined);
   });
+
+  it('hands the courier panel the open board, their pending offers and their missions at once', async () => {
+    const { pool, statements } = fakePool([
+      (sql) => sql.startsWith('SELECT d.id,d.region_id') ? driverRow : undefined,
+      (sql) => sql.startsWith('SELECT value_int FROM platform_settings') ? gateOff : undefined,
+      (sql) => sql.startsWith('UPDATE grocery_bids SET status') || sql.startsWith('UPDATE grocery_lists SET status')
+        ? { rows: [], rowCount: 0 } : undefined,
+      (sql) => sql.startsWith('SELECT g.id,g.store_name') && sql.includes('NOT EXISTS')
+        ? { rows: [{ id: listId, itemsText: 'نان، شیر، پنیر', bidCount: 2 }], rowCount: 1 } : undefined,
+      (sql) => sql.startsWith('SELECT g.id,g.store_name') && sql.includes('PAYMENT_CONFIRMED')
+        ? { rows: [{ id: bidId, status: 'SHOPPING', feeConfirmedAt: new Date() }], rowCount: 1 } : undefined,
+      (sql) => sql.startsWith('SELECT g.id,g.store_name') && sql.includes('"listStatus"')
+        ? { rows: [{ id: listId, amountRial: '150000' }], rowCount: 1 } : undefined,
+    ]);
+    const service = new GroceryService(pool, undefined as never);
+    const board = await service.courierBoard({ sub: 'driver-user' });
+    assert.equal(board.open.length, 1);
+    assert.equal(board.assigned.length, 1);
+    assert.equal((board.myBids ?? []).length, 1);
+    // the open board is scoped to the courier's own region and never shows lists they already bid on
+    const openQuery = statements.find(entry => entry.sql.includes('NOT EXISTS'))!;
+    assert.deepEqual(openQuery.values, ['region-1', driverId]);
+    const bidQuery = statements.find(entry => entry.sql.includes('"listStatus"'))!;
+    assert.deepEqual(bidQuery.values, [driverId]);
+  });
 });
