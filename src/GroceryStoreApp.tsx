@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { SkeletonList } from './ui/motion';
 import {
   BadgeCheck, CircleAlert, ClipboardList, Clock3, Package, Pencil, Plus, RefreshCw, Save, ShoppingBasket, Store, Trash2, X,
 } from 'lucide-react';
@@ -272,7 +273,9 @@ export default function GroceryStoreApp() {
               </div>
             </div>}
 
-            {products.length === 0
+            {loading && products.length === 0
+              ? <SkeletonList rows={3} label="در حال خواندن قفسه…"/>
+              : products.length === 0
               ? <p className="grocery-empty">قفسه خالیه. اولین کالا رو اضافه کن تا مشتری‌ها ببیننش.</p>
               : <ul className="store-shelf">
                 {products.map(item => <li key={item.id} className={`store-shelf-item${item.isActive ? '' : ' archived'}`}>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { SkeletonList } from './ui/motion';
 import { Bike, Check, ClipboardList, Clock3, MapPin, RefreshCw, Send, ShoppingBasket, Store, Truck, XCircle } from 'lucide-react';
 import { PhotoField } from './PhotoField';
 
@@ -267,7 +268,7 @@ export function DriverGrocery({ token }: { token: string }) {
 
     <h3 className="dg-title"><ClipboardList size={16}/> لیست‌های باز <span className="dg-count">{fa(open.length)}</span></h3>
     {loading && !board
-      ? <p className="dg-empty">دارم لیست‌ها رو می‌گیرم…</p>
+      ? <SkeletonList rows={3} label="دارم لیست‌ها رو می‌گیرم…"/>
       : open.length === 0
         ? <p className="dg-empty">الان لیست بازی تو منطقه‌ت نیست؛ چند دقیقهٔ دیگه یه سر بزن.</p>
         : <div className="dg-list">{open.map(list => {

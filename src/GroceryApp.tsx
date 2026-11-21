@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { SkeletonList } from './ui/motion';
 import {
   BadgeCheck, Bike, CheckCircle2, ClipboardList, Clock3, Copy, MapPin, Plus, RefreshCw, ShieldCheck,
   ShoppingBasket, Store, Truck, XCircle,
@@ -91,6 +92,7 @@ export default function GroceryApp() {
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [shellReady, setShellReady] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [shops, setShops] = useState<Shop[]>([]);
@@ -132,7 +134,7 @@ export default function GroceryApp() {
   useEffect(() => {
     document.title = 'خرید خونه از سوپرمارکت | جتینو';
     if (!token) return;
-    void Promise.all([loadList(token), loadAddresses(token), loadShops(token)]).catch((e: Error) => setError(e.message));
+    void Promise.all([loadList(token), loadAddresses(token), loadShops(token)]).catch((e: Error) => setError(e.message)).finally(() => setShellReady(true));
     const timer = window.setInterval(() => { void loadList(token).catch(() => { /* offline is fine */ }); if (selectedId) void loadDetail(selectedId, token).catch(() => { /* keep the last view */ }); }, 20_000);
     return () => window.clearInterval(timer);
   }, [token, loadList, loadAddresses, loadDetail, loadShops, selectedId]);
@@ -274,7 +276,7 @@ export default function GroceryApp() {
 
         <section className="grocery-card">
           <h2><ClipboardList size={18} />لیست‌های من</h2>
-          {rows.length === 0 && <p className="grocery-empty">هنوز لیستی ثبت نکردی.</p>}
+          {!shellReady && rows.length === 0 ? <SkeletonList rows={3} label="در حال خواندن لیست‌ها…"/> : rows.length === 0 && <p className="grocery-empty">هنوز لیستی ثبت نکردی.</p>}
           <div className="grocery-list">
             {rows.map(row => {
               const pill = STATUS[row.status] ?? { label: row.status, cls: '' };

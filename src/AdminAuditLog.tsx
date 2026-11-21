@@ -1,5 +1,6 @@
 import { useCallback,useEffect,useState } from 'react';
 import { ChevronLeft,ChevronRight,History,RefreshCw } from 'lucide-react';
+import { SkeletonList } from './ui/motion';
 
 type Entry={id:string;action:string;entityType:string;entityId:string|null;createdAt:string;actorName:string|null;actorPhone:string|null;metadata:Record<string,unknown>;redacted:number};
 type Page={items:Entry[];totalMatches:number;limit:number;offset:number};
@@ -72,7 +73,7 @@ export default function AdminAuditLog({token}:{token:string}){
     <button className="refresh-button" disabled={busy} onClick={()=>void load({action,entity,since,until})}><RefreshCw size={14}/>{busy?'در حال خواندن…':'تازه‌سازی'}</button>
    </div></header>
   {error&&<div className="feedback error" role="alert">{error}</div>}
-  {busy&&items.length===0?<div className="queue-empty">در حال خواندن گزارش…</div>:items.length===0?<div className="queue-empty">رویدادی با این فیلترها پیدا نشد.</div>:<>
+  {busy&&items.length===0?<SkeletonList rows={4} label="در حال خواندن گزارش…"/>:items.length===0?<div className="queue-empty">رویدادی با این فیلترها پیدا نشد.</div>:<>
    <div className="audit-list">{items.map(entry=><article className="audit-entry" key={entry.id}>
     <div className="audit-entry-top"><b>{labels[entry.action]??entry.action}</b><span className="status-pill">{entityLabels[entry.entityType]??entry.entityType} · {shortId(entry.entityId)}</span><small>{dateTime(entry.createdAt)}</small></div>
     <div className="audit-entry-meta"><span>توسط {entry.actorName??'سیستم'}{entry.actorPhone?` · ${entry.actorPhone}`:''}</span>{(Object.keys(entry.metadata).length>0||entry.redacted>0)&&<button type="button" className="audit-toggle" aria-expanded={open===entry.id} onClick={()=>setOpen(open===entry.id?null:entry.id)}>{open===entry.id?'بستن جزئیات':'جزئیات'}</button>}</div>

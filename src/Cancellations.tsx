@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Check, ChevronLeft, ChevronRight, Clock3, RefreshCw, ShieldCheck, Wallet, X } from 'lucide-react';
+import { SkeletonList } from './ui/motion';
 
 /**
  * §7.11 screens. A cancellation is shown as a *request* with an outcome, never as a button that
@@ -157,7 +158,7 @@ export function CancellationBoard({token}:{token:string}){
       <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="نام مشتری، شمارهٔ تماس یا شناسهٔ سفارش" aria-label="جست‌وجو در درخواست‌های لغو"/>
       <button className="primary-button" type="submit">جست‌وجو</button>{applied&&<button type="button" className="refresh-button" onClick={()=>{setSearch('');setApplied('');setPage(0);}}><X size={13}/>پاک‌کردن</button>}
     </form>
-    {!queue||queue.items.length===0?<div className="queue-empty">{tab==='PENDING'?'درخواست بازی برای بررسی نمانده است.':'موردی در این وضعیت نیست.'}</div>:<ul className="cancel-queue">{queue.items.map(item=><li key={item.id}>
+    {!queue?<SkeletonList rows={3} label="در حال خواندن درخواست‌های لغو…"/>:queue.items.length===0?<div className="queue-empty">{tab==='PENDING'?'درخواست بازی برای بررسی نمانده است.':'موردی در این وضعیت نیست.'}</div>:<ul className="cancel-queue">{queue.items.map(item=><li key={item.id}>
       <div className="cancel-line"><b dir="ltr">{shortId(item.orderId)}</b><span>{item.requesterName||'—'}{item.requesterTail?` · *${item.requesterTail}`:''}</span><em>{statusLabel(item.orderStatus)} · {money(item.totalRial)}</em>{typeof item.refundCount==='number'&&item.refundCount>0&&<i className="cancel-chip">{fa(item.refundCount)} ردیف بازپرداخت</i>}</div>
       <p className="cancel-reason">{item.reason}</p>
       {item.note&&<p className="cancel-note">{item.note}{item.decidedBy?` · ${item.decidedBy}`:''} · {dateTime(item.decidedAt||item.createdAt)}</p>}

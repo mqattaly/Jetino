@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Check, ChevronLeft, ChevronRight, MessageSquarePlus, RefreshCw, Star, Trash2, X } from 'lucide-react';
+import { SkeletonLines, SkeletonList } from './ui/motion';
 
 type Feedback = { id:string; orderId:string; orderCode:string; businessRating:number; driverRating:number|null; comment:string|null; createdAt:string; updatedAt:string; authorName?:string|null; businessName?:string|null };
 type BusinessReport = { feedbackCount:number; averageBusinessRating:number|null; averageDriverRating:number|null; needsAttention:number; items:Feedback[] };
@@ -58,7 +59,7 @@ export function OrderFeedbackPanel({token,orderId,hasDriver,onSaved}:{token:stri
       setExisting('own'); setNotice(existing==='none'?'بازخورد شما ثبت شد؛ کمک بزرگی به ما کردید.':'بازخورد شما اصلاح شد.'); onSaved?.();
     }catch(e){ setError((e as Error).message); } finally{ setBusy(false); }
   };
-  return <div className="fb-form">{loading?<div className="queue-empty">در حال خواندن بازخورد این سفارش…</div>:<>
+  return <div className="fb-form">{loading?<SkeletonLines rows={3}/>:<>
     {existing==='other'&&<div className="feedback error" role="alert">این سفارش بازخوردی ثبت کرده که فقط نویسنده‌اش می‌تواند آن را ویرایش کند.</div>}
     <StarPicker name="امتیاز به کسب‌وکار" value={business} onChange={setBusiness} hint={business?`${fa(business)} از ${fa(5)}`:'لازم است'}/>
     <StarPicker name="امتیاز به پیک" value={driver} onChange={next=>setDriver(next===driver?0:next)} hint={hasDriver===false?'این سفارش پیک تخصیص‌یافته نداشت.':driver?'برای حذف، همان ستاره را دوباره بزنید.':'اختیاری'}/>
@@ -94,7 +95,7 @@ export function BusinessFeedbackPanel({token}:{token:string}){
   return <section className="admin-card feedback-card">
     <div className="queue-heading"><div><span className="setting-icon"><Star size={18}/></span><div><h2>بازخورد مشتریان</h2><small>میانگین امتیازها و آخرین نظرها روی سفارش‌های تحویل‌شده</small></div></div><button className="refresh-button" disabled={loading} onClick={()=>void load()}><RefreshCw size={14}/>تازه‌سازی</button></div>
     {error&&<div className="feedback error" role="alert">{error}</div>}
-    {loading&&!report?<div className="queue-empty">در حال دریافت بازخوردها…</div>:!report?<div className="queue-empty">کسب‌وکاری برای این حساب ثبت نشده است.</div>:<>
+    {loading&&!report?<SkeletonList rows={3} label="در حال دریافت بازخوردها…"/>:!report?<div className="queue-empty">کسب‌وکاری برای این حساب ثبت نشده است.</div>:<>
       <ReportSummary average={report.averageBusinessRating} count={report.feedbackCount} attention={report.needsAttention}/>
       {report.items.length===0?<div className="queue-empty">هنوز بازخوردی روی سفارش‌های شما ثبت نشده است.</div>:<div className="fb-list">{report.items.map(row=><FeedbackRow key={row.id} row={row} showAuthor/>)}</div>}
     </>}
@@ -112,7 +113,7 @@ export function DriverFeedbackPanel({token}:{token:string}){
   return <section className="admin-card feedback-card">
     <div className="queue-heading"><div><span className="setting-icon"><Star size={18}/></span><div><h2>امتیاز تحویل‌ها</h2><small>فقط امتیازی که مشتریان به خودِ رانندگی شما داده‌اند</small></div></div><button className="refresh-button" disabled={loading} onClick={()=>void load()}><RefreshCw size={14}/>تازه‌سازی</button></div>
     {error&&<div className="feedback error" role="alert">{error}</div>}
-    {loading&&!report?<div className="queue-empty">در حال دریافت امتیازها…</div>:!report||report.feedbackCount===0?<div className="queue-empty">هنوز امتیازی برای شما ثبت نشده است.</div>:<>
+    {loading&&!report?<SkeletonList rows={3} label="در حال دریافت امتیازها…"/>:!report||report.feedbackCount===0?<div className="queue-empty">هنوز امتیازی برای شما ثبت نشده است.</div>:<>
       <ReportSummary average={report.averageDriverRating} count={report.feedbackCount}/>
       <div className="fb-list">{report.items.map(row=><FeedbackRow key={row.id} row={row}/>)}</div>
     </>}
@@ -144,7 +145,7 @@ export function TicketThread({token,ticketId,staff,onBack,onChanged}:{token:stri
   return <section className="admin-card thread-card">
     <div className="queue-heading"><div><span className="setting-icon"><MessageSquarePlus size={18}/></span><div><h2>گفت‌وگوی گزارش</h2><small>{thread?`${statusLabel(thread.status)} · ${fa(thread.messages.length)} پیام · آخرین فعالیت ${dateTime(thread.updatedAt)}`:'…'}</small></div></div><button className="refresh-button" onClick={onBack}><X size={14}/>بازگشت به فهرست</button></div>
     {error&&<div className="feedback error" role="alert">{error}</div>}
-    {!thread?<div className="queue-empty">در حال خواندن گفت‌وگو…</div>:<>
+    {!thread?<SkeletonList rows={3} label="در حال خواندن گفت‌وگو…"/>:<>
       {thread.orderId&&<p className="fb-note">به سفارش <b dir="ltr">{shortId(thread.orderId)}</b> مربوط است.</p>}
       <div className="thread">{thread.messages.map(message=><div key={message.id} className={message.fromStaff?'thread-msg staff':'thread-msg'}><span>{message.body}</span><small>{message.fromStaff?'پشتیبانی جتینو':message.authorName} · {dateTime(message.createdAt)}</small></div>)}</div>
       {thread.canReply?<><label className="checkout-label" htmlFor={`reply-${ticketId}`}>پاسخ شما</label><textarea id={`reply-${ticketId}`} className="fb-textarea" maxLength={MAX_BODY} value={reply} onChange={e=>setReply(e.target.value)} placeholder="هر نکته‌ای که به بررسی کمک می‌کند بنویسید."/><div className="fb-actions"><button className="approve-button" disabled={busy||reply.trim().length<2} onClick={()=>void send()}><Check size={14}/>ارسال پاسخ</button><span className="fb-counter">{fa(reply.trim().length)} از {fa(MAX_BODY)} نویسه</span></div></>

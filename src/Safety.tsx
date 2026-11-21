@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, BadgeCheck, Bike, Clock3, ExternalLink, ImageUp, Navigation, Radio, RefreshCw, ShieldAlert, ShieldCheck, ShieldX, Siren, UserCheck } from 'lucide-react';
 import { PhotoField } from './PhotoField';
 import { prettyPlate } from './ui/plate';
+import { SkeletonList } from './ui/motion';
 
 type ApiError = { message?: string };
 const fa = (value: number) => new Intl.NumberFormat('fa-IR').format(value);
@@ -246,13 +247,15 @@ export function AdminDriverVerification({ token }: { token: string }) {
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [matches, setMatches] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState('');
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
   const load = useCallback(async (next = status) => {
-    setError('');
+    setError(''); setLoading(true);
     try { setRows(await api<QueueRow[]>(`/api/v1/admin/drivers/verification?status=${encodeURIComponent(next)}`, token)); }
     catch (e) { setError((e as Error).message); }
+    finally { setLoading(false); }
   }, [token, status]);
   useEffect(() => { void load(); }, [load]);
 
@@ -282,7 +285,7 @@ export function AdminDriverVerification({ token }: { token: string }) {
     </div>
     {error && <div className="feedback error" role="alert">{error}</div>}
     {notice && <div className="feedback success" role="status">{notice}</div>}
-    {rows.length === 0 ? <p className="empty-note">موردی در این وضعیت نیست.</p> : rows.map(row => <article className="verification-row" key={row.id}>
+    {loading && rows.length === 0 ? <SkeletonList rows={3} label="در حال خواندن صف تأیید…"/> : rows.length === 0 ? <p className="empty-note">موردی در این وضعیت نیست.</p> : rows.map(row => <article className="verification-row" key={row.id}>
       <div className="verification-photos">
         {([['پروفایل', row.photoUrl, 'عکس پروفایل راننده'], ['سلفی', row.selfieUrl, 'سلفی ارسالی'], ['کارت ملی', row.idCardUrl, 'کارت ملی']] as const).map(([label, url, alt]) => <figure key={label}>
           {url ? <img src={url} alt={alt} /> : <span className="verification-missing">ثبت نشده</span>}
@@ -327,12 +330,14 @@ export function AdminSafetyBoard({ token }: { token: string }) {
   const [status, setStatus] = useState('OPEN');
   const [resolution, setResolution] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState('');
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const load = useCallback(async (next = status) => {
-    setError('');
+    setError(''); setLoading(true);
     try { setRows(await api<SafetyRow[]>(`/api/v1/admin/safety/events?status=${encodeURIComponent(next)}`, token)); }
     catch (e) { setError((e as Error).message); }
+    finally { setLoading(false); }
   }, [token, status]);
   useEffect(() => { void load(); }, [load]);
 
@@ -351,7 +356,7 @@ export function AdminSafetyBoard({ token }: { token: string }) {
       </select><button className="refresh-button" onClick={() => void load()}><Clock3 size={14} />به‌روزرسانی</button></div>
     </div>
     {error && <div className="feedback error" role="alert">{error}</div>}
-    {rows.length === 0 ? <p className="empty-note">گزارشی در این وضعیت نیست.</p> : rows.map(row => <article className={`safety-row status-${row.status.toLowerCase()}`} key={row.id}>
+    {loading && rows.length === 0 ? <SkeletonList rows={3} label="در حال خواندن گزارش‌ها…"/> : rows.length === 0 ? <p className="empty-note">گزارشی در این وضعیت نیست.</p> : rows.map(row => <article className={`safety-row status-${row.status.toLowerCase()}`} key={row.id}>
       <div className="safety-row-head"><span className={`status-pill ${row.status === 'OPEN' ? 'error-pill' : 'pending-pill'}`}>{categories.find(([value]) => value === row.category)?.[1] ?? row.category}</span><small>{clock(row.createdAt)}</small></div>
       <div className="safety-row-info">
         <span>ثبت‌کننده: <b>{roleLabel[row.raisedRole] ?? row.raisedRole} <span dir="ltr">{row.raisedPhone}</span></b></span>

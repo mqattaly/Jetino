@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { SkeletonTable } from './ui/motion';
 import { AlertTriangle, BarChart3, CalendarDays, Download, RefreshCw, Wallet } from 'lucide-react';
 
 type ModelRow = { mode: string; lists: string; delivered: string; feesRial: string; goodsRial: string; platformRial: string };
@@ -253,6 +254,6 @@ export function AdminGroceryReports({ token }: { token: string }) {
       </details>}
     </>}
 
-    {loading && !report && <p className="grocery-hint">دارم گزارش رو حساب می‌کنم…</p>}
+    {loading && !report && <SkeletonTable rows={4} cols={5} label="دارم گزارش رو حساب می‌کنم…"/>}
   </section>;
 }

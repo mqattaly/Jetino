@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { SkeletonList } from './ui/motion';
 import { Banknote, RefreshCw } from 'lucide-react';
 
 type Outstanding={driverId:string;driverPhone:string;regionName:string;openCount:number;openCashRial:string;lastCollectedAt:string};
@@ -43,7 +44,7 @@ export default function AdminCashSettlement({token,onSettled}:{token:string;onSe
   <div className="queue-heading"><div><span className="setting-icon cash-icon"><Banknote size={18}/></span><div><h2>تسویه وجه نقد رانندگان</h2><small>مبالغ وصول‌شده از مشتری که هنوز به راننده پرداخت نشده</small></div></div><button className="refresh-button" disabled={loading||busy} onClick={()=>void load()}><RefreshCw size={14}/>{loading?'در حال دریافت…':'تازه‌سازی'}</button></div>
   {error&&<div className="feedback error" role="alert">{error}</div>}
   {notice&&<div className="feedback success" role="status">{notice}</div>}
-  {rows.length===0&&!loading?<div className="queue-empty">وجه باز برای تسویه وجود ندارد.</div>:<div className="cash-list">{rows.map(row=><div className="cash-row" key={row.driverId}><div className="cash-details"><b dir="ltr">{row.driverPhone}</b><span>{row.regionName} · {number(row.openCount)} سفارش · آخرین وصول {day(row.lastCollectedAt)}</span></div><div className="cash-amount"><strong>{money(row.openCashRial)}</strong><button className="approve-button" disabled={busy} onClick={()=>void settle(row)}>ثبت تسویه</button></div></div>)}</div>}
+  {rows.length===0&&loading?<SkeletonList rows={3} label="در حال خواندن تسویه‌ها…"/>:rows.length===0?<div className="queue-empty">وجه باز برای تسویه وجود ندارد.</div>:<div className="cash-list">{rows.map(row=><div className="cash-row" key={row.driverId}><div className="cash-details"><b dir="ltr">{row.driverPhone}</b><span>{row.regionName} · {number(row.openCount)} سفارش · آخرین وصول {day(row.lastCollectedAt)}</span></div><div className="cash-amount"><strong>{money(row.openCashRial)}</strong><button className="approve-button" disabled={busy} onClick={()=>void settle(row)}>ثبت تسویه</button></div></div>)}</div>}
   <div className="snapshot-note"><RefreshCw size={16}/><span>تسویه فقط مبلغ ثبت‌شده در سامانه را صفر می‌کند؛ پرداخت واقعی در خارج از پنل انجام می‌شود و برای ثبت، مبلغ باید دقیقاً برابر ماندهٔ فعلی باشد.</span></div>
  </section>;
 }

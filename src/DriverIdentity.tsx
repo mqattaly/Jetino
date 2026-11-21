@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { LiquidLoader } from './ui/motion';
 import { BadgeCheck, Camera, CheckCircle2, Clock3, FileSignature, RefreshCw, ShieldAlert, ShieldCheck, Video } from 'lucide-react';
 
 type Identity = {
@@ -131,6 +132,8 @@ export function DriverIdentity({ token }: { token: string }) {
 
     {error && <div className="feedback error" role="alert">{error}</div>}
     {notice && <div className="feedback success" role="status">{notice}</div>}
+
+    {!data && !error && <LiquidLoader label="دارم وضعیت احراز هویتت رو می‌گیرم…" />}
 
     {data && !data.configured && <p className="verification-hint"><ShieldAlert size={14} />این بخش تازه راه افتاده و کلید سرویس استعلامش هنوز وصل نشده؛ به‌زودی فعال می‌شه. تا آن موقع تأیید مدارک مثل قبل با بررسی کارشناس انجام می‌شه.</p>}
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Bell, BellRing, RefreshCw, Send, Smartphone } from 'lucide-react';
+import { SkeletonList } from './ui/motion';
 
 /**
  * §7.12 through the operations window: every notification the platform wrote, what the delivery
@@ -108,7 +109,7 @@ export function NotificationDeliveryBoard({ token }: { token: string }) {
         </div>
       </>}
 
-      {rows.length === 0 ? <div className="queue-empty">ردیفی برای این فیلتر نیست. صف هر {fa(5)} دقیقه یک‌بار هم با زمان‌بند اجرا می‌شود.</div> : (
+      {rows.length === 0 && busy ? <SkeletonList rows={4} label="در حال خواندن صف ارسال…"/> : rows.length === 0 ? <div className="queue-empty">ردیفی برای این فیلتر نیست. صف هر {fa(5)} دقیقه یک‌بار هم با زمان‌بند اجرا می‌شود.</div> : (
         <div className="delivery-rows">
           {rows.map((row) => (
             <div className={`delivery-row ${row.state.toLowerCase()}`} key={String(row.id)}>
