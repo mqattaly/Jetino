@@ -1,5 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { GroceryService } from './grocery.service';
 
@@ -170,7 +172,7 @@ describe('GroceryService · text shopping list', () => {
     await assert.rejects(service.confirmPayment({ sub: 'driver-user' }, listId), ForbiddenException);
   });
 
-  it('marks the receipt confirmed and stores the platform fee of the chosen revenue model', async () => {
+  it('marks the receipt confirmed and stores the platform fee with the model that produced it', async () => {
     const { pool, statements } = fakePool([
       (sql) => sql.startsWith('SELECT d.id,d.region_id') ? driverRow : undefined,
       (sql) => sql.startsWith('SELECT value_int FROM platform_settings') ? gateOff : undefined,
@@ -185,7 +187,8 @@ describe('GroceryService · text shopping list', () => {
     const service = new GroceryService(pool, undefined as never);
     await service.confirmPayment({ sub: 'driver-user' }, listId);
     const update = statements.find(entry => entry.sql.startsWith('UPDATE grocery_lists SET status=\'PAYMENT_CONFIRMED\''))!;
-    assert.deepEqual(update.values, [listId, 'driver-user', '10000']);
+    // amount, model, rate and fixed value are snapshotted together so later settings never rewrite history
+    assert.deepEqual(update.values, [listId, 'driver-user', '10000', 'FEE_PERCENT', 1000, null]);
   });
 
   it('will not confirm a payment that has no receipt', async () => {
@@ -455,5 +458,100 @@ describe('GroceryService · text shopping list', () => {
     assert.deepEqual(openQuery.values, ['region-1', driverId]);
     const bidQuery = statements.find(entry => entry.sql.includes('"listStatus"'))!;
     assert.deepEqual(bidQuery.values, [driverId]);
+  });
+
+  it('sums fees, goods and commission of a range and groups the commission by the stored model', async () => {
+    const { pool, statements } = fakePool([
+      (sql) => sql.includes('grocery-report-totals') ? {
+        rows: [{ lists: '4', delivered: '3', feesConfirmedRial: '700000', goodsConfirmedRial: '4200000', platformRial: '70000', refundedRial: '150000' }],
+        rowCount: 1,
+      } : undefined,
+      (sql) => sql.includes('grocery-report-models') ? {
+        rows: [
+          { mode: 'FEE_PERCENT', lists: '2', feesRial: '400000', goodsRial: '2600000', platformRial: '40000' },
+          { mode: 'FIXED', lists: '1', feesRial: '150000', goodsRial: '800000', platformRial: '30000' },
+          { mode: 'UNSNAPSHOTTED', lists: '1', feesRial: '150000', goodsRial: '800000', platformRial: '0' },
+        ],
+        rowCount: 3,
+      } : undefined,
+      (sql) => sql.includes('grocery-report-daily') ? { rows: [{ day: '2026-11-16', lists: '2', delivered: '1', feesRial: '300000', goodsRial: '1200000', platformRial: '30000' }], rowCount: 1 } : undefined,
+      (sql) => sql.includes('grocery-report-attention') ? {
+        rows: [{ goodsReceiptWaiting: '2', goodsReceiptStale: '1', feeReceiptWaiting: '1', deliveredWithoutPayment: '0', refundMissing: '1', goodsConfirmedWithoutReceipt: '0', invoiceStale: '1' }],
+        rowCount: 1,
+      } : undefined,
+      (sql) => sql.includes('grocery-report-queue') ? {
+        rows: [{ id: listId, storeName: 'هایپر مرکزی', status: 'PAID', invoice_amount_rial: '1200000', platform_fee_rial: '30000' }],
+        rowCount: 1,
+      } : undefined,
+    ]);
+    const service = new GroceryService(pool, undefined as never);
+    const report = await service.reports({ sub: 'staff', roles: ['OPERATIONS_MANAGER'] }, '2026-11-01', '2026-11-16');
+    assert.equal(report.from, '2026-11-01');
+    assert.equal(report.to, '2026-11-16');
+    assert.equal(report.days, 16);
+    assert.equal((report.totals as Row).platformRial, '70000');
+    assert.equal(report.byModel.length, 3);
+    assert.equal((report.byModel[2] as Row).mode, 'UNSNAPSHOTTED');
+    assert.equal((report.attention as Row).refundMissing, '1');
+    // money rows are strings so a bigint never loses precision on the way to the browser
+    assert.equal((report.queue[0] as Row).invoiceAmountRial, '1200000');
+    const totalsQuery = statements.find(entry => entry.sql.includes('grocery-report-totals'))!;
+    assert.deepEqual(totalsQuery.values, ['2026-11-01', '2026-11-16']);
+  });
+
+  it('refuses a reversed or malformed report range and keeps the report staff-only', async () => {
+    const service = new GroceryService({ query: async () => ({ rows: [], rowCount: 0 }), connect: () => { throw new Error('unexpected'); } } as never, undefined as never);
+    await assert.rejects(service.reports({ sub: 'user', roles: ['CUSTOMER'] }), ForbiddenException);
+    await assert.rejects(service.reports({ sub: 'staff', roles: ['SUPER_ADMIN'] }, '2026-13-01', '2026-11-16'), BadRequestException);
+    await assert.rejects(service.reports({ sub: 'staff', roles: ['SUPER_ADMIN'] }, '2026-11-16', '2026-11-01'), BadRequestException);
+    await assert.rejects(service.reports({ sub: 'staff', roles: ['SUPER_ADMIN'] }, '2025-01-01', '2026-11-16'), BadRequestException);
+  });
+
+
+  it('keeps the report range in bound values and never splices it into the SQL text', async () => {
+    const statements: Array<{ sql: string; values?: unknown[] }> = [];
+    const pool = {
+      query: async (sql: string, values?: unknown[]) => { statements.push({ sql, values }); return { rows: [{}], rowCount: 1 }; },
+      connect: () => { throw new Error('unexpected'); },
+    };
+    const service = new GroceryService(pool as never, undefined as never);
+    await service.reports({ sub: 'staff', roles: ['SUPER_ADMIN'] }, '2026-11-01', '2026-11-16');
+    assert.equal(statements.length, 5, 'totals, models, daily, attention and the queue in one round trip');
+    for (const entry of statements) {
+      assert.ok(!entry.sql.includes('2026-11-01'), 'a date must travel as a bound value');
+      assert.ok(entry.values === undefined || entry.values.every(value => !String(value).includes('DROP')), 'no raw input in the SQL');
+    }
+    assert.deepEqual(statements[0].values, ['2026-11-01', '2026-11-16']);
+  });
+
+  it('never reads the courier phone from the drivers table, which has no phone column', async () => {
+    // the phone lives on users; a stray `d.phone` broke every grocery detail call in production once
+    const candidate = join(process.cwd(), 'src/grocery/grocery.service.ts');
+    const fallback = join(process.cwd(), 'api/src/grocery/grocery.service.ts');
+    const source = await readFile(candidate, 'utf8').catch(() => readFile(fallback, 'utf8'));
+    assert.ok(!/\bd\.phone\b/.test(source), 'drivers has no phone column — read it from the joined user');
+    assert.ok(!/\bd\.full_name\b/.test(source), 'use the users table for identity fields the schema keeps there');
+  });
+
+  it('writes the CSV with a BOM, quoted cells and a filename that names the range', async () => {
+    const { pool } = fakePool([
+      (sql) => sql.includes('grocery-report-csv') ? {
+        rows: [{
+          id: listId, createdAt: new Date('2026-11-16T08:00:00Z'), storeName: '=HYPERLINK("x")', status: 'DELIVERED',
+          feeRial: '250000', feeConfirmedAt: new Date('2026-11-16T08:05:00Z'), invoiceAmountRial: '1450000',
+          paymentConfirmedAt: new Date('2026-11-16T08:40:00Z'), platformRial: '25000', mode: 'FEE_PERCENT',
+          refundRial: '0', customerPhone: '09120000000', driverPhone: '09130000000',
+        }],
+        rowCount: 1,
+      } : undefined,
+    ]);
+    const service = new GroceryService(pool, undefined as never);
+    const file = await service.reportsCsv({ sub: 'staff', roles: ['SUPER_ADMIN'] }, '2026-11-16', '2026-11-16');
+    assert.equal(file.filename, 'jetino-grocery-2026-11-16_2026-11-16.csv');
+    assert.ok(file.body.startsWith('\uFEFF'));
+    assert.ok(file.body.includes('"شناسه"'));
+    // a store name that looks like a formula never reaches Excel as one
+    assert.ok(file.body.includes('"\'=HYPERLINK(""x"")"'));
+    assert.ok(file.body.includes('"25000"'));
   });
 });

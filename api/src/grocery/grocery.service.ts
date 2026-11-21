@@ -194,7 +194,7 @@ export class GroceryService {
               g.fee_extensions AS "feeExtensions",g.payment_extensions AS "paymentExtensions",
               g.invoice_reject_reason AS "invoiceRejectReason",g.invoice_rejected_at AS "invoiceRejectedAt",
               g.refund_rial,g.refunded_at AS "refundedAt",
-              d.user_id AS "driverUserId",du.display_name AS "driverName",d.phone AS "driverPhone",d.plate_number AS "driverPlate",d.vehicle_type AS "driverVehicle"
+              d.user_id AS "driverUserId",du.display_name AS "driverName",du.phone AS "driverPhone",d.plate_number AS "driverPlate",d.vehicle_type AS "driverVehicle"
        FROM grocery_lists g
        LEFT JOIN drivers d ON d.id=g.driver_id
        LEFT JOIN users du ON du.id=d.user_id
@@ -479,14 +479,25 @@ export class GroceryService {
     } finally { client.release(); }
   }
 
+  /**
+   * The commission of one mission, together with the model and rate that produced it. The snapshot
+   * is stored next to the amount so a later settings change cannot rewrite an old report.
+   */
   private async platformFee(queryable: { query: Pool['query'] }, feeRial: bigint, goodsRial: bigint) {
     const settings = await this.settings(queryable);
     // bps = 1/100 of a percent, so the division is by 10 000 with a half-unit rounding step
     const bpsOf = (amount: bigint, bps: number) => (amount * BigInt(bps) + 5000n) / 10000n;
-    if (settings.revenueMode === 'FEE_PERCENT') return bpsOf(feeRial, settings.feeBps);
-    if (settings.revenueMode === 'GOODS_PERCENT') return bpsOf(goodsRial, settings.goodsBps);
-    if (settings.revenueMode === 'FIXED') return settings.fixedRial;
-    return 0n;
+    const mode = settings.revenueMode;
+    const amount = mode === 'FEE_PERCENT' ? bpsOf(feeRial, settings.feeBps)
+      : mode === 'GOODS_PERCENT' ? bpsOf(goodsRial, settings.goodsBps)
+        : mode === 'FIXED' ? settings.fixedRial
+          : 0n;
+    return {
+      amount,
+      mode,
+      bps: mode === 'FEE_PERCENT' ? settings.feeBps : mode === 'GOODS_PERCENT' ? settings.goodsBps : null,
+      fixedRial: mode === 'FIXED' ? settings.fixedRial : null,
+    };
   }
 
   async confirmPayment(user: Principal, id: string) {
@@ -506,13 +517,13 @@ export class GroceryService {
       const fee = await this.platformFee(client, BigInt(row.fee_rial ?? 0), BigInt(row.invoice_amount_rial ?? 0));
       await client.query(
         `UPDATE grocery_lists SET status='PAYMENT_CONFIRMED',payment_confirmed_at=now(),payment_confirmed_by=$2,
-           platform_fee_rial=$3,updated_at=now() WHERE id=$1`,
-        [id, user.sub, fee.toString()]);
+           platform_fee_rial=$3,platform_fee_mode=$4,platform_fee_bps=$5,platform_fee_fixed_rial=$6,updated_at=now() WHERE id=$1`,
+        [id, user.sub, fee.amount.toString(), fee.mode, fee.bps, fee.fixedRial === null ? null : fee.fixedRial.toString()]);
       await notify(client, row.customer_id, 'GROCERY_PAYMENT_CONFIRMED', 'پرداخت شما تأیید شد',
         'فروشنده دریافت مبلغ را تأیید کرد؛ پیک در حال تحویل سفارش است.', { listId: id });
       await client.query(
         `INSERT INTO audit_logs(actor_id,action,entity_type,entity_id,metadata) VALUES($1,'GROCERY_PAYMENT_CONFIRMED','GROCERY_LIST',$2,$3::jsonb)`,
-        [user.sub, id, JSON.stringify({ platformFeeRial: fee.toString(), invoiceRial: row.invoice_amount_rial })]);
+        [user.sub, id, JSON.stringify({ platformFeeRial: fee.amount.toString(), mode: fee.mode, bps: fee.bps, invoiceRial: row.invoice_amount_rial })]);
       await client.query('COMMIT');
       return this.detailFor(this.pool, user, id);
     } catch (error) {
@@ -909,5 +920,146 @@ export class GroceryService {
       try { await client.query('ROLLBACK'); } catch { /* transaction already closed */ }
       throw error;
     } finally { client.release(); }
+  }
+
+  /* ────────────────────────────  گزارش‌های سوپرمارکت  ──────────────────────────── */
+
+  /** `YYYY-MM-DD` only; a Jalali date or a random string must fail loudly, not silently widen the report. */
+  private static reportDay(value: unknown, fallback: Date, label: string) {
+    if (value === undefined || value === null || value === '') return fallback;
+    const text = String(value).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) throw new BadRequestException(`${label} باید به شکل ۲۰۲۶-۰۱-۳۱ باشد.`);
+    const parsed = new Date(`${text}T00:00:00Z`);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== text) {
+      throw new BadRequestException(`${label} تاریخ معتبری نیست.`);
+    }
+    return parsed;
+  }
+
+  private static reportRange(fromInput: unknown, toInput: unknown) {
+    const today = new Date();
+    const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    const to = GroceryService.reportDay(toInput, todayUtc, 'پایان بازه');
+    const from = GroceryService.reportDay(fromInput, new Date(to.getTime() - 29 * 24 * 60 * 60 * 1000), 'شروع بازه');
+    if (from.getTime() > to.getTime()) throw new BadRequestException('شروع بازه نمی‌تواند بعد از پایانش باشد.');
+    const days = Math.round((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+    if (days > 400) throw new BadRequestException('بازهٔ گزارش حداکثر ۴۰۰ روز است.');
+    return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10), days };
+  }
+
+  /**
+   * Stage four of the grocery phase: money in, commission out, and the receipts that still need a
+   * human. Fee and goods money only count once they are confirmed, so the numbers never flatter us.
+   */
+  async reports(actor: Principal, fromInput?: unknown, toInput?: unknown) {
+    if (!isStaff(actor)) throw new ForbiddenException('این گزارش فقط برای کارکنان است.');
+    const range = GroceryService.reportRange(fromInput, toInput);
+    const bounds = [range.from, range.to];
+    const [totals, byModel, daily, attention, queue] = await Promise.all([
+      this.pool.query(
+        `SELECT /* grocery-report-totals */
+                COUNT(*)::text AS "lists",
+                COUNT(*) FILTER (WHERE status='DELIVERED')::text AS "delivered",
+                COUNT(*) FILTER (WHERE status='CANCELLED')::text AS "cancelled",
+                COUNT(*) FILTER (WHERE status='EXPIRED')::text AS "expired",
+                COUNT(*) FILTER (WHERE status='PAID')::text AS "awaitingReceiptCheck",
+                COUNT(*) FILTER (WHERE fee_confirmed_at IS NOT NULL)::text AS "feesConfirmedCount",
+                COALESCE(SUM(fee_rial) FILTER (WHERE fee_confirmed_at IS NOT NULL),0)::text AS "feesConfirmedRial",
+                COALESCE(SUM(fee_rial) FILTER (WHERE fee_confirmed_at IS NULL AND fee_rial IS NOT NULL),0)::text AS "feesPendingRial",
+                COUNT(*) FILTER (WHERE payment_confirmed_at IS NOT NULL)::text AS "goodsConfirmedCount",
+                COALESCE(SUM(invoice_amount_rial) FILTER (WHERE payment_confirmed_at IS NOT NULL),0)::text AS "goodsConfirmedRial",
+                COALESCE(SUM(platform_fee_rial),0)::text AS "platformRial",
+                COALESCE(SUM(refund_rial),0)::text AS "refundedRial",
+                COUNT(*) FILTER (WHERE refunded_at IS NOT NULL)::text AS "refundedCount"
+         FROM grocery_lists
+         WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')`, bounds),
+      this.pool.query(
+        `SELECT /* grocery-report-models */
+                COALESCE(platform_fee_mode,'UNSNAPSHOTTED') AS mode,
+                COUNT(*)::text AS "lists",
+                COUNT(*) FILTER (WHERE status='DELIVERED')::text AS "delivered",
+                COALESCE(SUM(fee_rial) FILTER (WHERE fee_confirmed_at IS NOT NULL),0)::text AS "feesRial",
+                COALESCE(SUM(invoice_amount_rial) FILTER (WHERE payment_confirmed_at IS NOT NULL),0)::text AS "goodsRial",
+                COALESCE(SUM(platform_fee_rial),0)::text AS "platformRial"
+         FROM grocery_lists
+         WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')
+           AND payment_confirmed_at IS NOT NULL
+         GROUP BY 1 ORDER BY COALESCE(SUM(platform_fee_rial),0) DESC`, bounds),
+      this.pool.query(
+        `SELECT /* grocery-report-daily */
+                to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
+                COUNT(*)::text AS "lists",
+                COUNT(*) FILTER (WHERE payment_confirmed_at IS NOT NULL)::text AS "delivered",
+                COALESCE(SUM(fee_rial) FILTER (WHERE fee_confirmed_at IS NOT NULL),0)::text AS "feesRial",
+                COALESCE(SUM(invoice_amount_rial) FILTER (WHERE payment_confirmed_at IS NOT NULL),0)::text AS "goodsRial",
+                COALESCE(SUM(platform_fee_rial),0)::text AS "platformRial"
+         FROM grocery_lists
+         WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')
+         GROUP BY 1 ORDER BY 1 DESC`, bounds),
+      this.pool.query(
+        `SELECT /* grocery-report-attention */
+                (SELECT COUNT(*) FROM grocery_lists WHERE status='PAID')::text AS "goodsReceiptWaiting",
+                (SELECT COUNT(*) FROM grocery_lists WHERE status='PAID' AND payment_declared_at < now() - interval '6 hours')::text AS "goodsReceiptStale",
+                (SELECT COUNT(*) FROM grocery_lists WHERE fee_declared_at IS NOT NULL AND fee_confirmed_at IS NULL)::text AS "feeReceiptWaiting",
+                (SELECT COUNT(*) FROM grocery_lists WHERE status='DELIVERED' AND payment_confirmed_at IS NULL)::text AS "deliveredWithoutPayment",
+                (SELECT COUNT(*) FROM grocery_lists WHERE status='CANCELLED' AND fee_confirmed_at IS NOT NULL AND refunded_at IS NULL)::text AS "refundMissing",
+                (SELECT COUNT(*) FROM grocery_lists WHERE payment_confirmed_at IS NOT NULL AND payment_receipt_url IS NULL)::text AS "goodsConfirmedWithoutReceipt",
+                (SELECT COUNT(*) FROM grocery_lists WHERE status='INVOICE_SENT' AND invoice_submitted_at < now() - interval '24 hours')::text AS "invoiceStale"`),
+      this.pool.query(
+        `SELECT /* grocery-report-queue */
+                g.id,g.store_name AS "storeName",g.status,g.fee_rial AS "feeRial",g.invoice_amount_rial AS "invoiceAmountRial",
+                g.fee_declared_at AS "feeDeclaredAt",g.payment_declared_at AS "paymentDeclaredAt",
+                g.fee_confirmed_at AS "feeConfirmedAt",g.payment_receipt_url AS "paymentReceiptUrl",
+                u.phone AS "customerPhone"
+         FROM grocery_lists g JOIN users u ON u.id=g.customer_id
+         WHERE g.status='PAID' OR (g.fee_declared_at IS NOT NULL AND g.fee_confirmed_at IS NULL)
+         ORDER BY COALESCE(g.payment_declared_at,g.fee_declared_at) ASC NULLS LAST LIMIT 25`),
+    ]);
+    return {
+      currency: 'IRR',
+      from: range.from, to: range.to, days: range.days,
+      generatedAt: new Date().toISOString(),
+      totals: totals.rows[0] ?? {},
+      byModel: byModel.rows,
+      daily: daily.rows,
+      attention: attention.rows[0] ?? {},
+      queue: queue.rows.map(row => this.shape(row)),
+    };
+  }
+
+  /** The same range as one spreadsheet: one row per list, BOM included so Excel keeps the Persian. */
+  async reportsCsv(actor: Principal, fromInput?: unknown, toInput?: unknown) {
+    if (!isStaff(actor)) throw new ForbiddenException('این گزارش فقط برای کارکنان است.');
+    const range = GroceryService.reportRange(fromInput, toInput);
+    const result = await this.pool.query(
+      `SELECT /* grocery-report-csv */
+              g.id,g.created_at AS "createdAt",g.store_name AS "storeName",g.status,
+              g.fee_rial AS "feeRial",g.fee_confirmed_at AS "feeConfirmedAt",
+              g.invoice_amount_rial AS "invoiceAmountRial",g.payment_confirmed_at AS "paymentConfirmedAt",
+              g.platform_fee_rial AS "platformRial",g.platform_fee_mode AS mode,COALESCE(g.refund_rial,0)::text AS "refundRial",
+              u.phone AS "customerPhone",du.phone AS "driverPhone"
+       FROM grocery_lists g JOIN users u ON u.id=g.customer_id
+       LEFT JOIN drivers d ON d.id=g.driver_id
+       LEFT JOIN users du ON du.id=d.user_id
+       WHERE g.created_at >= $1::date AND g.created_at < ($2::date + interval '1 day')
+       ORDER BY g.created_at DESC`, [range.from, range.to]);
+    const headers = ['شناسه', 'تاریخ ثبت', 'فروشگاه', 'وضعیت', 'کرایه (ریال)', 'کرایه تأییدشده در',
+      'مبلغ کالا (ریال)', 'پرداخت تأییدشده در', 'کارمزد جتینو (ریال)', 'مدل کارمزد', 'استرداد (ریال)', 'موبایل مشتری', 'موبایل پیک'];
+    const cell = (value: unknown) => {
+      const text = value === null || value === undefined ? '' : String(value);
+      // a spreadsheet reads a leading =, +, - or @ as a formula, so neutralise it
+      const safe = /^[=+\-@]/.test(text) ? `'${text}` : text;
+      return `"${safe.replace(/"/g, '""')}"`;
+    };
+    const lines = [headers.map(cell).join(',')];
+    for (const row of result.rows as Array<Record<string, unknown>>) {
+      lines.push([
+        row.id, row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
+        row.storeName ?? 'فروشگاه آزاد', row.status, row.feeRial ?? '', row.feeConfirmedAt ?? '',
+        row.invoiceAmountRial ?? '', row.paymentConfirmedAt ?? '', row.platformRial ?? '', row.mode ?? '',
+        row.refundRial ?? '', row.customerPhone ?? '', row.driverPhone ?? '',
+      ].map(cell).join(','));
+    }
+    return { filename: `jetino-grocery-${range.from}_${range.to}.csv`, body: `\uFEFF${lines.join('\r\n')}\r\n` };
   }
 }
