@@ -114,20 +114,22 @@
 /* ---------- ۴. لودر مایع ---------- */
 .liquid-loader { display: grid; justify-items: center; gap: 14px; padding: 26px 16px; }
 .liquid-loader.is-full { min-height: 62vh; align-content: center; }
-.liquid-loader-stage { position: relative; width: 92px; height: 92px; display: grid; place-items: center; }
+.liquid-loader-stage { position: relative; width: 118px; height: 88px; display: grid; place-items: center; }
 .liquid-loader-ring {
   position: absolute; inset: -9px; border: 2px solid color-mix(in srgb, var(--brand) 36%, transparent);
   border-radius: 46% 54% 58% 42% / 48% 42% 58% 52%;
   animation: liquid-morph 6.5s ease-in-out infinite, liquid-turn 9s linear infinite;
 }
 .liquid-loader-blob {
-  width: 72px; height: 72px; display: grid; place-items: center; color: #fff; font-size: 29px; font-weight: 800;
-  border-radius: 44% 56% 52% 48% / 50% 46% 54% 50%;
-  background: radial-gradient(circle at 32% 26%, color-mix(in srgb, var(--brand-bright) 88%, #fff), var(--brand) 56%, var(--brand-2));
-  box-shadow: 0 18px 42px color-mix(in srgb, var(--brand) 34%, transparent);
+  width: 104px; height: 74px; display: grid; place-items: center;
+  border-radius: 24px;
+  background: linear-gradient(160deg, #ffffff, #e9f0f8);
+  box-shadow: 0 18px 42px color-mix(in srgb, var(--brand) 26%, transparent);
   animation: liquid-morph 7.5s ease-in-out infinite;
 }
-.liquid-loader-blob b { font-weight: 800; animation: liquid-bob 3.6s ease-in-out infinite; }
+.liquid-loader-blob img { width: 84px; height: auto; display: block; animation: liquid-bob 3.6s ease-in-out infinite; }
+html[data-theme="dark"] .liquid-loader-blob { background: linear-gradient(160deg, #1c2d42, #0d1927); }
+html[data-theme="dark"] .liquid-loader-blob img { content: url('/brand/logo-loader-dark.png'); }
 .liquid-loader-drop {
   position: absolute; bottom: 0; inset-inline-start: 34%; width: 8px; height: 8px; border-radius: 50%;
   background: color-mix(in srgb, var(--brand) 55%, transparent);

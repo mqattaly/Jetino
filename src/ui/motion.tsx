@@ -138,7 +138,7 @@ export function LiquidLoader({ label = 'دارم آماده می‌کنم…', f
   return <div className={`liquid-loader${full ? ' is-full' : ''}`} role="status" aria-live="polite">
     <div className="liquid-loader-stage" aria-hidden="true">
       <span className="liquid-loader-ring" />
-      <span className="liquid-loader-blob"><b>ج</b></span>
+      <span className="liquid-loader-blob"><img src="/brand/logo-loader.png" alt="" width="86" height="53" decoding="async"/></span>
       <span className="liquid-loader-drop drop-a" />
       <span className="liquid-loader-drop drop-b" />
     </div>
