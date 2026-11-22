@@ -216,7 +216,7 @@ export default function GroceryApp() {
 
   return <div className="ops-page grocery-page" dir="rtl">
     <header className="ops-header">
-      <a href="/" className="brand"><span className="brand-mark">ج</span><span>جتینو<small>خرید از سوپرمارکت</small></span></a>
+      <a href="/" className="brand"><img className="brand-logo" src="/brand/logo.png" alt="" width="46" height="28" decoding="async"/><span>جتینو<small>خرید از سوپرمارکت</small></span></a>
       <div className="ops-header-actions">
         {token && <button className="logout-button" onClick={logout}>خروج</button>}
         <button className="refresh-button" disabled={busy} onClick={() => run(async () => { await loadList(); if (selectedId) await loadDetail(selectedId); })}>

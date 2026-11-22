@@ -144,7 +144,7 @@ export default function GroceryStoreApp() {
 
   return <div className="ops-page store-page" dir="rtl">
     <header className="ops-header">
-      <a href="/grocery" className="brand"><span className="brand-mark">ج</span><span>جتینو<small>پنل فروشگاه</small></span></a>
+      <a href="/grocery" className="brand"><img className="brand-logo" src="/brand/logo.png" alt="" width="46" height="28" decoding="async"/><span>جتینو<small>پنل فروشگاه</small></span></a>
       <div className="ops-header-actions">
         <a className="text-button" href="/grocery">خرید خونه</a>
         {token && <button className="logout-button" onClick={logout}>خروج</button>}

@@ -1,5 +1,5 @@
 const CACHE_NAME = 'jetino-shell-v2';
-const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icons/jetino.svg'];
+const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon-192.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)));
@@ -47,8 +47,8 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(payload.title || 'جتینو', {
       body: payload.body || '',
-      icon: '/icons/jetino.svg',
-      badge: '/icons/jetino.svg',
+      icon: '/icons/icon-192.png',
+      badge: '/icons/favicon-32.png',
       tag: payload.tag || undefined,
       data: { url: data.url || '/notifications' },
       lang: 'fa',

@@ -271,15 +271,11 @@ svg { stroke-linecap: round; stroke-linejoin: round; }
   display: inline-flex; align-items: center; gap: 6px;
   border-radius: var(--r-pill); padding: 9px 13px; font-weight: 600;
 }
-.topbar nav a.active {
-  background: var(--brand-soft);
-  color: var(--ink);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-bright) 32%, transparent);
-}
-.topbar nav a.active svg { color: var(--brand-bright); }
 .topbar nav a:hover svg { transform: translateY(-1px); }
 .topbar nav a svg { transition: transform var(--t-fast) var(--spring); }
 
+.brand-logo { width: 62px; height: 38px; object-fit: contain; flex: none; display: block; }
+html[data-theme="dark"] .brand-logo { content: url('/brand/logo-dark.png'); }
 .brand-mark {
   background: linear-gradient(150deg, var(--brand-bright), var(--brand-2));
   color: #fff;
@@ -866,11 +862,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--brand-bright);
 .grocery-copy-text b { letter-spacing: .05em; }
 
 /* ۲۵) دو سرویس: غذا و خرید خانه (باند سوپرمارکت در صفحهٔ اصلی) */
-.quick-actions .grocery-tile {
-  background: linear-gradient(150deg, color-mix(in srgb, var(--brand) 22%, var(--surface)), var(--surface));
-  border-color: color-mix(in srgb, var(--brand) 38%, var(--line));
-}
-.quick-actions .grocery-tile svg { background: color-mix(in srgb, var(--brand) 26%, transparent); color: #fff; }
 .trust-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .offers { padding-top: 34px; }
 .offer-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
@@ -1369,6 +1360,7 @@ footer { gap: var(--space-3); flex-wrap: wrap; font-size: 11px; }
   :root { --header-h: 62px; }
   .app-shell { padding: 0 16px; }
   .topbar { gap: 10px; padding: 0 16px; margin: 0 -16px; }
+  .brand-logo { width: 52px; height: 32px; }
   .hero { min-height: 0; padding: 20px 18px 18px; border-radius: 22px; }
   .hero-copy { width: 100%; }
   .hero h1 { font-size: clamp(26px, 7.4vw, 32px); line-height: 1.42; }
