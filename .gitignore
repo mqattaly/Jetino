@@ -5,3 +5,6 @@ dist/
 !.env.example
 # pg_dump output from npm run db:backup — never commit a database dump
 backups/
+
+# graphify query cache (regenerated locally)
+docs/graph/cache/

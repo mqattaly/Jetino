@@ -1,0 +1,12 @@
+# خروجی خود گراف نباید دوباره در گراف ایندکس شود (باعث تورم مصنوعی می‌شود)
+docs/graph/
+
+# خروجی‌های ساخت و وابستگی‌ها
+dist/
+node_modules/
+api/node_modules/
+coverage/
+backups/
+
+# فایل‌های قفل‌شده و داده‌های حجیم
+package-lock.json
