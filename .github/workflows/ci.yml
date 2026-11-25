@@ -1,0 +1,254 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  # §7.3 asks for a restore drill that happens on the calendar, not only when someone
+  # pushes; a scheduled run always starts from the default branch, so merge this to keep it.
+  schedule:
+    - cron: '0 3 * * 3'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # pull-requests: write lets a failing run paste the test output onto the PR,
+    # because the raw job log is not reachable from outside GitHub Actions
+    permissions:
+      contents: read
+      pull-requests: write
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: jetino
+          POSTGRES_USER: jetino
+          POSTGRES_PASSWORD: jetino_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jetino -d jetino"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://jetino:jetino_ci_only@localhost:5432/jetino?schema=public
+      DATABASE_URL_TEST: postgresql://jetino:jetino_ci_only@localhost:5432/jetino?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install storefront dependencies
+        run: npm ci
+      - name: Build storefront
+        run: npm run build
+      - name: Install API dependencies
+        working-directory: api
+        run: npm ci
+      - name: Build API
+        working-directory: api
+        run: npm run build
+      - name: Apply migrations
+        working-directory: api
+        run: npm run db:migrate
+      - name: Run API tests (unit plus the PostgreSQL flow test)
+        working-directory: api
+        run: |
+          set +e
+          npm test 2>&1 | tee "$RUNNER_TEMP/api-tests.log"
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            # a failing TAP summary alone does not say *what* differed, and the raw job log
+            # is not readable from outside Actions, so the assertion excerpt goes with it
+            {
+              echo '### API test output'
+              echo
+              echo '```'
+              grep -B 6 -A 26 -m 3 "AssertionError" "$RUNNER_TEMP/api-tests.log" || true
+              echo '--- last lines ---'
+              tail -n 200 "$RUNNER_TEMP/api-tests.log"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
+      - name: Paste the failing tests on the pull request
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo "### ❌ API tests failed on \`${GITHUB_SHA:0:7}\`"
+            echo
+            echo '```text'
+            grep -E "not ok|# (tests|pass|fail)" "$RUNNER_TEMP/api-tests.log" | tail -n 20
+            echo "----- first failures, with the diff that caused them -----"
+            grep -B 6 -A 26 -m 3 "AssertionError" "$RUNNER_TEMP/api-tests.log" || true
+            echo '```'
+          } > "$RUNNER_TEMP/api-tests-comment.md"
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/api-tests-comment.md"
+
+  backup-drill:
+    name: Backup and restore drill
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # the same guarantee the PRD asks for in one place: a dump that has never
+    # been restored is only a file, so every push proves it rebuilds the schema
+    # and the row counts the backup recorded
+    needs: verify
+    permissions:
+      contents: read
+      pull-requests: write
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: jetino
+          POSTGRES_USER: jetino
+          POSTGRES_PASSWORD: jetino_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jetino -d jetino"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://jetino:jetino_ci_only@localhost:5432/jetino?schema=public
+      DRILL_DATABASE_URL: postgresql://jetino:jetino_ci_only@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - name: Keep backups out of the repository
+        # the runner context is not available in job-level env, so the scratch
+        # directory is exported for the rest of the job instead
+        run: echo "BACKUP_DIR=$RUNNER_TEMP/jetino-backups" >> "$GITHUB_ENV"
+      - name: Install API dependencies
+        working-directory: api
+        run: npm ci
+      - name: Build a database worth backing up
+        working-directory: api
+        run: |
+          npm run db:migrate
+          npm run db:seed:demo
+      - name: Install PostgreSQL client tools
+        # pg_dump/pg_restore from a much newer major than the server argue with it in
+        # their own preamble, so a matching client is preferred when the runner lacks one
+        run: |
+          if pg_dump --version 2>/dev/null | grep -q 'PostgreSQL) 16'; then exit 0; fi
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16 || sudo apt-get install -y -qq postgresql-client
+          if [ -x /usr/lib/postgresql/16/bin/pg_dump ]; then echo "PATH=/usr/lib/postgresql/16/bin:$PATH" >> "$GITHUB_PATH"; fi
+      - name: Back up
+        working-directory: api
+        run: |
+          set +e
+          npm run db:backup 2>&1 | tee "$RUNNER_TEMP/backup.log"
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            { echo '### Backup output'; echo; echo '```'; tail -n 80 "$RUNNER_TEMP/backup.log"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
+      - name: Restore the backup into a scratch database and compare
+        working-directory: api
+        run: |
+          set +e
+          npm run db:restore-drill 2>&1 | tee "$RUNNER_TEMP/restore.log"
+          status=${PIPESTATUS[0]}
+          {
+            echo '### Restore drill'
+            echo
+            echo '```'
+            tail -n 80 "$RUNNER_TEMP/restore.log" 2>/dev/null
+            ls -l "$BACKUP_DIR" 2>/dev/null
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+      - name: Paste the drill output on the pull request
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo "### ❌ backup drill failed on \`${GITHUB_SHA:0:7}\`"
+            echo
+            echo '```text'
+            tail -n 40 "$RUNNER_TEMP/backup.log" "$RUNNER_TEMP/restore.log" 2>/dev/null
+            echo '```'
+          } > "$RUNNER_TEMP/backup-drill-comment.md"
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/backup-drill-comment.md"
+
+  docker-image:
+    name: Docker image (Chabakan target)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # the container is what actually ships to Chabakan, and a Dockerfile that nobody builds rots
+    # quietly. A real database is attached so this covers all three things only a container can
+    # break: the two-stage build, the entrypoint's migrations, and the cron command a scheduler runs.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: jetino
+          POSTGRES_USER: jetino
+          POSTGRES_PASSWORD: jetino_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jetino -d jetino"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://jetino:jetino_ci_only@127.0.0.1:5432/jetino
+      JWT_SECRET: ci-only-secret-ci-only-secret-123456
+      OTP_HMAC_SECRET: ci-only-otp-ci-only-otp-123456789
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the image
+        run: docker build --tag jetino:ci .
+      - name: Start it — the entrypoint has to migrate, then listen
+        run: |
+          docker run --detach --name jetino --network host \
+            --env DATABASE_URL \
+            --env JWT_SECRET \
+            --env OTP_HMAC_SECRET \
+            jetino:ci
+          for attempt in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:3000/api/v1/health 2>/dev/null | grep -q '"status":"ok"'; then break; fi
+            sleep 2
+          done
+          docker logs jetino
+          docker logs jetino 2>&1 | grep -q 'Applied migration 001_initial'
+          curl -fsS http://127.0.0.1:3000/api/v1/health
+          # one origin: the shell must answer `/` and a client-side route, and a missing asset
+          # must stay a 404 rather than turn into HTML
+          curl -fsS http://127.0.0.1:3000/ | grep -q 'id="root"'
+          curl -fsS http://127.0.0.1:3000/admin | grep -q 'id="root"'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/nope.js)" = "404"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/v1/nope)" = "404"
+          curl -sI http://127.0.0.1:3000/sw.js | grep -qi 'no-store'
+      - name: Run the cron entry point the scheduler will run
+        run: |
+          docker run --rm --network host \
+            --env DATABASE_URL \
+            --env SKIP_MIGRATIONS=1 \
+            --env CRON_LIMIT=5 \
+            jetino:ci node dist/notifications/dispatch-cron.js | tee "$RUNNER_TEMP/dispatch.log"
+          grep -q '"event":"dispatch"' "$RUNNER_TEMP/dispatch.log"
+          grep -q '"limit":5' "$RUNNER_TEMP/dispatch.log"
+      - name: Show the container log
+        if: always()
+        run: docker logs jetino || true
+      - name: Clean up
+        if: always()
+        run: docker rm --force jetino || true

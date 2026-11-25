@@ -1,0 +1,31 @@
+name: Notification queue sweep
+
+on:
+  schedule:
+    # the delivery queue is drained every five minutes; vercel.json keeps a daily platform
+    # cron as the backstop, because the hobby plan allows only one scheduled run a day
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Send what is due
+        env:
+          JETINO_API_URL: ${{ vars.JETINO_API_URL }}
+          CRON_SECRET: ${{ secrets.JETINO_CRON_SECRET }}
+        run: |
+          set -eu
+          if [ -z "$JETINO_API_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "JETINO_API_URL / JETINO_CRON_SECRET are not set on this repository, so there is nothing to sweep." >&2
+            echo "Set them in Settings → Secrets and variables → Actions to run the queue from here." >&2
+            exit 1
+          fi
+          # the scheduler route is the GET half: POST /dispatch is the staff action and needs a
+          # session with a review role, so a scheduler calling it would only ever be rejected
+          response=$(curl -fsS --max-time 25 \
+            "${JETINO_API_URL%/}/api/v1/notifications/dispatch?limit=50" \
+            -H "Authorization: Bearer $CRON_SECRET")
+          echo "dispatch: $response"

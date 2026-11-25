@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="fa" dir="rtl"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><meta name="theme-color" content="#0a1420"/><meta name="description" content="جتینو؛ غذای محلی و خرید از سوپرمارکت، تا دمِ خونه، در بندر خمیر"/><link rel="manifest" href="/manifest.webmanifest"/><link rel="preload" as="image" href="/brand/logo-loader.png"/><link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png"/><link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png"/><link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png"/><title>جتینو | غذا و خرید خونه در بندر خمیر</title><script>
+  // Resolve the saved appearance before the first paint so a reload never flashes the wrong palette.
+  (function () {
+    try {
+      var mode = localStorage.getItem('jetino.theme.v2') || 'auto';
+      var accent = localStorage.getItem('jetino.accent.v2') || 'crimson';
+      var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var resolved = mode === 'auto' ? (dark ? 'dark' : 'light') : mode;
+      var root = document.documentElement;
+      root.dataset.theme = resolved;
+      root.dataset.themeMode = mode;
+      root.dataset.accent = accent;
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', resolved === 'dark' ? '#0a1420' : '#f2f6fb');
+    } catch (error) {
+      document.documentElement.dataset.theme = 'light';
+      document.documentElement.dataset.accent = 'crimson';
+    }
+  })();
+</script>
+<style>
+  /* صفحهٔ لودینگ اولیه: پیش از دانلود باندل دیده می‌شود و با mount شدن React پاک می‌شود. */
+  #boot { position: fixed; inset: 0; display: grid; place-items: center; z-index: 99;
+    background: radial-gradient(900px 520px at 88% -8%, rgb(201 36 63 / 16%), transparent 68%),
+                radial-gradient(760px 460px at 4% 10%, rgb(31 201 176 / 12%), transparent 66%), #f2f6fb; }
+  html[data-theme="dark"] #boot { background: radial-gradient(900px 520px at 88% -8%, rgb(213 43 71 / 22%), transparent 68%),
+    radial-gradient(760px 460px at 4% 10%, rgb(31 201 176 / 14%), transparent 66%), #0a1420; }
+  #boot .blobs { position: absolute; inset: 0; overflow: hidden; }
+  #boot .blob { position: absolute; width: 44vmax; height: 44vmax; filter: blur(64px); opacity: .5;
+    border-radius: 46% 54% 58% 42% / 48% 42% 58% 52%; animation: bootDrift 24s cubic-bezier(.22,.68,.24,1) infinite alternate;
+    background: radial-gradient(circle at 36% 32%, rgb(201 36 63 / 44%), transparent 66%); }
+  #boot .b1 { inset-inline-start: -16vmax; top: -18vmax; }
+  #boot .b2 { inset-inline-end: -18vmax; top: 8vmax; opacity: .38; animation-duration: 30s; animation-delay: -6s;
+    background: radial-gradient(circle at 58% 42%, rgb(31 201 176 / 40%), transparent 68%); }
+  #boot .stage { position: relative; display: grid; justify-items: center; gap: 16px; }
+  #boot .ring { position: absolute; top: -10px; width: 96px; height: 96px; border: 2px solid rgb(201 36 63 / 36%);
+    border-radius: 46% 54% 58% 42% / 48% 42% 58% 52%; animation: bootMorph 6.5s ease-in-out infinite, bootTurn 9s linear infinite; }
+  #boot .drop { width: 108px; height: 76px; display: grid; place-items: center;
+    border-radius: 26px;
+    background: linear-gradient(160deg, #ffffff, #e9f0f8);
+    box-shadow: 0 18px 42px rgb(201 36 63 / 24%); animation: bootMorph 7.5s ease-in-out infinite; }
+  #boot .drop img { width: 86px; height: auto; display: block; }
+  html[data-theme="dark"] #boot .drop { background: linear-gradient(160deg, #1c2d42, #0d1927); box-shadow: 0 18px 42px rgb(0 0 0 / 46%); }
+  html[data-theme="dark"] #boot .drop img { content: url('/brand/logo-loader-dark.png'); }
+  #boot .brandline { margin-top: 26px; font: 800 20px/1.2 'Vazirmatn Variable', Vazirmatn, Tahoma, sans-serif; color: #14202c;
+    display: grid; justify-items: center; gap: 5px; }
+  #boot .brandline small { font-size: 11px; font-weight: 600; color: #6a7684; letter-spacing: .01em; }
+  html[data-theme="dark"] #boot .brandline { color: #eaf1f8; }
+  html[data-theme="dark"] #boot .brandline small { color: #93a3b4; }
+  #boot .bar { width: 148px; height: 4px; border-radius: 999px; overflow: hidden; background: rgb(20 32 44 / 12%); }
+  html[data-theme="dark"] #boot .bar { background: rgb(234 241 248 / 16%); }
+  #boot .bar i { display: block; height: 100%; width: 42%; border-radius: inherit;
+    background: linear-gradient(90deg, transparent, #c9243f, #1fc9b0); animation: bootSweep 1.5s cubic-bezier(.22,.68,.24,1) infinite; }
+  #boot .label { margin: 0; font: 600 12.5px/1.5 'Vazirmatn Variable', Vazirmatn, Tahoma, sans-serif; color: #6a7684; }
+  html[data-theme="dark"] #boot .label { color: #93a3b4; }
+  @keyframes bootDrift { 0% { transform: translate3d(0,0,0) scale(1); } 100% { transform: translate3d(5vmax,6vmax,0) scale(1.1); } }
+  @keyframes bootMorph {
+    0%, 100% { border-radius: 46% 54% 58% 42% / 48% 42% 58% 52%; }
+    33% { border-radius: 58% 42% 44% 56% / 56% 58% 42% 44%; }
+    66% { border-radius: 42% 58% 54% 46% / 44% 50% 50% 56%; }
+  }
+  @keyframes bootTurn { to { transform: rotate(1turn); } }
+  @keyframes bootSweep { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }
+  @media (prefers-reduced-motion: reduce) {
+    #boot .blob, #boot .ring, #boot .drop, #boot .bar i { animation: none !important; }
+  }
+</style>
+</head><body><div id="root"><div id="boot" role="status" aria-live="polite">
+  <div class="blobs" aria-hidden="true"><span class="blob b1"></span><span class="blob b2"></span></div>
+  <div class="stage">
+    <span class="ring" aria-hidden="true"></span>
+    <span class="drop" aria-hidden="true"><img src="/brand/logo-loader.png" alt="" width="86" height="53"/></span>
+    <span class="brandline">جتینو<small>غذا و خرید خونه، تا دمِ در</small></span>
+    <span class="bar" aria-hidden="true"><i></i></span>
+    <p class="label">دارم سفره رو می‌چینم…</p>
+  </div>
+</div></div><script type="module" src="/src/main.tsx"></script></body></html>

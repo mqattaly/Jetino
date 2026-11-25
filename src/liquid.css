@@ -1,0 +1,250 @@
+/*
+ * «لایهٔ مایع» جتینو.
+ * یک لایهٔ صرفاً دیداری که بعد از next.css بارگذاری می‌شود: نور مایعِ پس‌زمینه،
+ * صفحات و اسکلت‌های لودینگ، شاین ملایم روی کارت‌ها و حرکت جوهری دکمه‌ها.
+ * هیچ رفتاری را عوض نمی‌کند؛ همهٔ رنگ‌ها از توکن‌های پالت می‌آیند تا با هر
+ * اکسنت و حالت شب/روز هماهنگ بمانند.
+ */
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ---------- ۱. قالب و نور پس‌زمینه ---------- */
+.app-frame { position: relative; z-index: 1; }
+
+.liquid-backdrop { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; contain: strict; }
+.liquid-blob {
+  position: absolute; width: 46vmax; height: 46vmax; opacity: .42;
+  border-radius: 46% 54% 58% 42% / 48% 42% 58% 52%;
+  background: radial-gradient(circle at 36% 32%, color-mix(in srgb, var(--brand) 42%, transparent), transparent 66%);
+  filter: blur(64px);
+  animation: liquid-drift 26s var(--ease) infinite alternate;
+  will-change: transform, border-radius;
+}
+.blob-one { inset-inline-start: -16vmax; top: -18vmax; }
+.blob-two {
+  inset-inline-end: -18vmax; top: 6vmax; opacity: .34;
+  background: radial-gradient(circle at 58% 42%, color-mix(in srgb, var(--teal) 40%, transparent), transparent 68%);
+  animation-duration: 32s; animation-delay: -7s;
+}
+.blob-three {
+  inset-inline-start: 14vmax; bottom: -26vmax; opacity: .3;
+  background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--gold) 30%, transparent), transparent 70%);
+  animation-duration: 38s; animation-delay: -13s;
+}
+.liquid-veil {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--canvas) 58%, transparent), color-mix(in srgb, var(--canvas) 82%, transparent));
+}
+[data-theme="dark"] .liquid-blob { opacity: .3; filter: blur(76px); }
+[data-theme="dark"] .liquid-veil { background: linear-gradient(180deg, color-mix(in srgb, var(--canvas) 46%, transparent), color-mix(in srgb, var(--canvas) 74%, transparent)); }
+
+@keyframes liquid-drift {
+  0% { transform: translate3d(0, 0, 0) scale(1); border-radius: 46% 54% 58% 42% / 48% 42% 58% 52%; }
+  50% { transform: translate3d(4vmax, 6vmax, 0) scale(1.08); border-radius: 58% 42% 44% 56% / 56% 58% 42% 44%; }
+  100% { transform: translate3d(-3vmax, 3vmax, 0) scale(.95); border-radius: 40% 60% 52% 48% / 44% 52% 48% 56%; }
+}
+
+/* ---------- ۲. نوار پیشرفت مایع (بالای صفحه، هنگام هر درخواست) ---------- */
+.liquid-progress {
+  position: fixed; inset-block-start: 0; inset-inline: 0; height: 3px; z-index: 60;
+  overflow: hidden; pointer-events: none; opacity: 0; transition: opacity .3s var(--ease);
+}
+.liquid-progress i {
+  display: block; height: 100%; width: 34%; border-radius: var(--r-pill);
+  background: linear-gradient(90deg, var(--brand-2), var(--brand) 46%, color-mix(in srgb, var(--brand) 45%, var(--teal)));
+  box-shadow: 0 0 12px color-mix(in srgb, var(--brand) 45%, transparent);
+  animation: liquid-run 1.35s var(--ease) infinite;
+}
+.liquid-progress[data-active="true"] { opacity: 1; }
+.liquid-progress { direction: ltr; }
+
+@keyframes liquid-run {
+  0% { transform: translateX(-110%); opacity: 0; }
+  18% { opacity: 1; }
+  78% { opacity: 1; }
+  100% { transform: translateX(320%); opacity: 0; }
+}
+
+/* ---------- ۳. اسکلت‌ها ---------- */
+.sk {
+  display: block; position: relative; overflow: hidden; min-height: 10px; border-radius: 10px;
+  background: linear-gradient(100deg,
+    color-mix(in srgb, var(--ink) 6%, transparent) 12%,
+    color-mix(in srgb, var(--ink) 12%, transparent) 28%,
+    color-mix(in srgb, var(--ink) 6%, transparent) 44%);
+  background-size: 240% 100%;
+  animation: liquid-shimmer 1.7s linear infinite;
+}
+.sk-line { height: 11px; border-radius: var(--r-pill); }
+.sk-line-thin { height: 9px; opacity: .78; }
+.sk-lines { display: grid; gap: 9px; }
+.sk-avatar { width: 38px; height: 38px; border-radius: 13px; flex: none; }
+.sk-pill { width: 58px; height: 20px; border-radius: var(--r-pill); flex: none; align-self: center; }
+
+.sk-list { display: grid; gap: 10px; padding-block: 2px; }
+.sk-row {
+  display: flex; align-items: center; gap: 12px; padding: 13px 15px;
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface);
+}
+.sk-row-body { display: grid; gap: 8px; flex: 1 1 auto; min-width: 0; }
+
+.sk-table { display: grid; gap: 2px; }
+.sk-table-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 12px; padding: 13px 12px; border-bottom: 1px solid var(--line); }
+.sk-table-head { background: var(--surface-2); border-radius: var(--r-sm); border-bottom: 0; }
+
+.sk-card { overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); }
+.sk-card-media { height: 168px; border-radius: 0; }
+.sk-card-body { display: grid; gap: 9px; padding: 16px; }
+
+.sk-dishes { display: grid; gap: 10px; }
+.sk-dish {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface);
+}
+.sk-dish-media { width: 56px; height: 56px; border-radius: 16px; flex: none; }
+
+@keyframes liquid-shimmer {
+  from { background-position: 180% 0; }
+  to { background-position: -80% 0; }
+}
+
+/* ---------- ۴. لودر مایع ---------- */
+.liquid-loader { display: grid; justify-items: center; gap: 14px; padding: 26px 16px; }
+.liquid-loader.is-full { min-height: 62vh; align-content: center; }
+.liquid-loader-stage { position: relative; width: 118px; height: 88px; display: grid; place-items: center; }
+.liquid-loader-ring {
+  position: absolute; inset: -9px; border: 2px solid color-mix(in srgb, var(--brand) 36%, transparent);
+  border-radius: 46% 54% 58% 42% / 48% 42% 58% 52%;
+  animation: liquid-morph 6.5s ease-in-out infinite, liquid-turn 9s linear infinite;
+}
+.liquid-loader-blob {
+  width: 104px; height: 74px; display: grid; place-items: center;
+  border-radius: 24px;
+  background: linear-gradient(160deg, #ffffff, #e9f0f8);
+  box-shadow: 0 18px 42px color-mix(in srgb, var(--brand) 26%, transparent);
+  animation: liquid-morph 7.5s ease-in-out infinite;
+}
+.liquid-loader-blob img { width: 84px; height: auto; display: block; animation: liquid-bob 3.6s ease-in-out infinite; }
+html[data-theme="dark"] .liquid-loader-blob { background: linear-gradient(160deg, #1c2d42, #0d1927); }
+html[data-theme="dark"] .liquid-loader-blob img { content: url('/brand/logo-loader-dark.png'); }
+.liquid-loader-drop {
+  position: absolute; bottom: 0; inset-inline-start: 34%; width: 8px; height: 8px; border-radius: 50%;
+  background: color-mix(in srgb, var(--brand) 55%, transparent);
+  animation: liquid-drop 2.6s var(--ease) infinite;
+}
+.drop-b { inset-inline-start: 62%; animation-delay: 1.3s; }
+.liquid-loader-label { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.liquid-loader-bar { width: 136px; height: 4px; border-radius: var(--r-pill); overflow: hidden; background: color-mix(in srgb, var(--ink) 10%, transparent); }
+.liquid-loader-bar i {
+  display: block; height: 100%; width: 42%; border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--brand), var(--teal));
+  animation: liquid-sweep 1.5s var(--ease) infinite;
+}
+
+.inline-loader { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); }
+.inline-loader i {
+  width: 13px; height: 13px; border-radius: 45% 55% 50% 50%;
+  border: 2px solid color-mix(in srgb, var(--brand) 30%, transparent);
+  border-top-color: var(--brand);
+  animation: liquid-turn .9s linear infinite;
+}
+
+@keyframes liquid-morph {
+  0%, 100% { border-radius: 46% 54% 58% 42% / 48% 42% 58% 52%; }
+  33% { border-radius: 58% 42% 44% 56% / 56% 58% 42% 44%; }
+  66% { border-radius: 42% 58% 54% 46% / 44% 50% 50% 56%; }
+}
+@keyframes liquid-turn { to { transform: rotate(1turn); } }
+@keyframes liquid-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+@keyframes liquid-drop {
+  0% { transform: translateY(0) scale(.6); opacity: 0; }
+  30% { opacity: .9; }
+  100% { transform: translateY(26px) scale(1.1); opacity: 0; }
+}
+@keyframes liquid-sweep {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
+
+/* ---------- ۵. شاین مایع روی سطوح ---------- */
+:is(.restaurant-card, .tile-btn, .stat-tile, .grocery-card, .admin-card, .ops-order, .verification-row, .audit-entry, .sk-card) {
+  position: relative;
+}
+:is(.restaurant-card, .tile-btn, .stat-tile, .grocery-card, .admin-card, .ops-order, .verification-row, .audit-entry)::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  opacity: 0; transition: opacity .45s var(--ease);
+  background:
+    radial-gradient(130% 92% at 100% 0%, color-mix(in srgb, var(--brand) 15%, transparent), transparent 58%),
+    radial-gradient(96% 84% at 0% 100%, color-mix(in srgb, var(--teal) 13%, transparent), transparent 62%);
+}
+:is(.restaurant-card, .tile-btn, .stat-tile, .grocery-card, .admin-card, .ops-order, .verification-row, .audit-entry):hover::after,
+:is(.restaurant-card, .tile-btn, .stat-tile, .grocery-card, .admin-card, .ops-order, .verification-row, .audit-entry):focus-visible::after {
+  opacity: 1;
+}
+@media (hover: hover) {
+  :is(.restaurant-card, .tile-btn, .stat-tile, .grocery-card, .ops-order) {
+    transition: transform .3s var(--spring), box-shadow .3s var(--ease), border-color .3s var(--ease);
+  }
+  :is(.restaurant-card, .tile-btn, .stat-tile, .grocery-card, .ops-order):hover {
+    transform: translateY(-2px);
+    box-shadow: var(--elev-2);
+  }
+}
+
+/* ---------- ۶. دکمه‌های جوهری ---------- */
+:is(.primary-button, .btn-primary, .approve-button) {
+  position: relative; overflow: hidden; isolation: isolate;
+  background-image: linear-gradient(115deg, var(--brand-2), var(--brand) 30%, color-mix(in srgb, var(--brand) 62%, var(--gold)) 56%, var(--brand) 80%, var(--brand-2));
+  background-size: 220% 100%;
+  animation: liquid-flow 13s ease-in-out infinite;
+  transition: transform .18s var(--spring), box-shadow .26s var(--ease), filter .2s var(--ease);
+}
+:is(.primary-button, .btn-primary, .approve-button):hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--brand) 32%, transparent);
+}
+:is(.primary-button, .btn-primary, .approve-button):active:not(:disabled) { transform: translateY(1px) scale(.994); }
+:is(.primary-button, .btn-primary, .approve-button):disabled { animation: none; }
+@keyframes liquid-flow {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.brand-mark { animation: brand-liquid 16s ease-in-out infinite; background-size: 180% 180%; }
+@keyframes brand-liquid {
+  0%, 100% { background-position: 0% 40%; border-radius: 13px; }
+  50% { background-position: 100% 60%; border-radius: 16px 11px 15px 12px; }
+}
+
+/* ---------- ۷. ورودی‌ها و اعلان‌ها ---------- */
+:is(input, select, textarea):focus-visible {
+  border-color: color-mix(in srgb, var(--brand) 48%, var(--line)) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent);
+}
+:is(.feedback.success, .checkout-notice, .pending-pill, .verified-pill, .rejected-pill) { animation: pop .32s var(--spring) both; }
+.overlay { animation: veil-in .24s var(--ease) both; }
+@keyframes veil-in { from { opacity: 0; backdrop-filter: blur(0); } to { opacity: 1; } }
+
+/* ---------- ۸. ظاهر شدن تدریجی فهرست‌ها ---------- */
+.reveal-ready :is(.restaurant-grid, .audit-list, .admin-order-list, .grocery-list, .sk-list) > * { animation: rise-in .46s var(--spring) both; }
+.reveal-ready :is(.restaurant-grid, .audit-list, .admin-order-list, .grocery-list, .sk-list) > *:nth-child(2) { animation-delay: .05s; }
+.reveal-ready :is(.restaurant-grid, .audit-list, .admin-order-list, .grocery-list, .sk-list) > *:nth-child(3) { animation-delay: .1s; }
+.reveal-ready :is(.restaurant-grid, .audit-list, .admin-order-list, .grocery-list, .sk-list) > *:nth-child(4) { animation-delay: .15s; }
+.reveal-ready :is(.restaurant-grid, .audit-list, .admin-order-list, .grocery-list, .sk-list) > *:nth-child(5) { animation-delay: .2s; }
+.reveal-ready :is(.restaurant-grid, .audit-list, .admin-order-list, .grocery-list, .sk-list) > *:nth-child(n+6) { animation-delay: .24s; }
+
+@media (max-width: 720px) {
+  .liquid-blob { filter: blur(52px); opacity: .34; }
+  .liquid-loader.is-full { min-height: 54vh; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liquid-blob, .brand-mark, .liquid-progress i, .liquid-loader-ring, .liquid-loader-blob, .liquid-loader-blob b,
+  .liquid-loader-drop, .liquid-loader-bar i, .sk,
+  :is(.primary-button, .btn-primary, .approve-button) { animation: none !important; }
+  .liquid-progress[data-active="true"] i { transform: none; opacity: .85; }
+  .reveal-ready :is(.restaurant-grid, .audit-list, .admin-order-list, .grocery-list, .sk-list) > * { animation: none !important; }
+}
