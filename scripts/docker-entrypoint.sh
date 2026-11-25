@@ -26,5 +26,17 @@ else
   done
 fi
 
+# سرویس کرون همین تصویر را با یک دستور دلخواه اجرا می‌کند
+# (مثلاً: node dist/notifications/dispatch-cron.js) و نباید سرور HTTP بالا بیاورد
+if [ "$#" -gt 0 ]; then
+  # پنل‌ها دستور را گاهی یک رشتهٔ کامل می‌فرستند («node dist/...»)، نه آرگومان‌های جدا
+  if [ "$#" -eq 1 ] && [ "${1#* }" != "$1" ]; then
+    echo "→ اجرای دستور: $1"
+    exec sh -c "$1"
+  fi
+  echo "→ اجرای دستور: $*"
+  exec "$@"
+fi
+
 echo "→ راه‌اندازی سرور روی پورت ${PORT:-3000}"
 exec node dist/main.js
