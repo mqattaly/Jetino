@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { Pool } from 'pg';
+import { databaseUrl } from '../config/database-url';
 
 export const PG_POOL = 'PG_POOL';
 
@@ -7,7 +8,8 @@ export const PG_POOL = 'PG_POOL';
 @Module({
   providers: [{
     provide: PG_POOL,
-    useFactory: () => new Pool({ connectionString: process.env.DATABASE_URL }),
+    // `databaseUrl()` also understands the split DB_HOST/DB_USER/... form some panels inject
+    useFactory: () => new Pool({ connectionString: databaseUrl() }),
   }],
   exports: [PG_POOL],
 })

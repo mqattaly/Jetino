@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { Client } from 'pg';
+import { requireDatabaseUrl } from '../config/database-url';
 
 /**
  * Records migrations that a database already has but that our ledger never saw — the case when the
@@ -28,9 +29,8 @@ export async function planBaseline(names: string[], recorded: (name: string) => 
 }
 
 async function baseline() {
-  if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL must be set');
   const confirmed = process.env.BASELINE_CONFIRM === 'yes';
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const client = new Client({ connectionString: requireDatabaseUrl() });
   await client.connect();
   try {
     await client.query(LEDGER_DDL);

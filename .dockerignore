@@ -1,0 +1,27 @@
+# چیزی که تصویر لازم ندارد؛ ورودی build را کوچک و سریع نگه می‌دارد
+.git
+.github
+node_modules
+api/node_modules
+dist
+api/dist
+coverage
+backups
+*.tsbuildinfo
+
+# مستندات و گراف دانش (۵ مگابایت) وارد تصویر نمی‌شوند
+docs
+Master_Project_Context.md
+PRD.md
+
+# secrets هرگز وارد تصویر نشوند
+.env
+.env.*
+!.env.example
+api/.env
+api/.env.*
+!api/.env.example
+
+# فایل‌های پلتفرم‌های دیگر
+vercel.json
+.chabokignore

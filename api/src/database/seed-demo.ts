@@ -1,9 +1,9 @@
 import 'dotenv/config';
 import { Client } from 'pg';
+import { requireDatabaseUrl } from '../config/database-url';
 
 async function seed() {
-  if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL must be set');
-  const client = new Client({connectionString:process.env.DATABASE_URL}); await client.connect();
+  const client = new Client({connectionString:requireDatabaseUrl()}); await client.connect();
   try {
     await client.query('BEGIN');
     const region = await client.query(`SELECT id FROM regions WHERE slug='bandar-khamir'`);

@@ -1,12 +1,13 @@
 import 'dotenv/config';
 import { Client } from 'pg';
+import { requireDatabaseUrl } from '../config/database-url';
 
 async function promote() {
   const input = process.env.ADMIN_PHONE?.replace(/[\s()-]/g, '');
-  if (!process.env.DATABASE_URL || !input) throw new Error('Set DATABASE_URL and ADMIN_PHONE to an existing verified user phone.');
+  if (!input) throw new Error('ADMIN_PHONE را روی شمارهٔ کاربر تأییدشده تنظیم کنید.');
   const phone = /^09\d{9}$/.test(input) ? `+98${input.slice(1)}` : input;
   if (!/^\+989\d{9}$/.test(phone)) throw new Error('ADMIN_PHONE must be a valid Iranian mobile number.');
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const client = new Client({ connectionString: requireDatabaseUrl() });
   await client.connect();
   try {
     await client.query('BEGIN');

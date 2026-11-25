@@ -1,15 +1,32 @@
 import 'dotenv/config';
+import { existsSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { Client } from 'pg';
+import { requireDatabaseUrl } from '../config/database-url';
+
+/**
+ * The SQL files live next to the TypeScript source, but a container image ships the compiled
+ * `dist/` and only copies the migrations, so the working directory is not enough on its own.
+ */
+function migrationDirectory(): string {
+  const candidates = [
+    process.env.MIGRATIONS_DIR,
+    resolve(process.cwd(), 'src/database/migrations'),
+    resolve(__dirname, '..', '..', 'src', 'database', 'migrations'),
+    resolve(__dirname, '..', '..', 'migrations'),
+  ].filter((dir): dir is string => Boolean(dir));
+  const found = candidates.find((dir) => existsSync(dir));
+  if (!found) throw new Error(`پوشهٔ مایگریشن‌ها پیدا نشد. مسیرها: ${candidates.join(', ')}`);
+  return found;
+}
 
 async function migrate() {
-  if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL must be set');
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const client = new Client({ connectionString: requireDatabaseUrl() });
   await client.connect();
   try {
     await client.query('CREATE TABLE IF NOT EXISTS schema_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())');
-    const directory = resolve(process.cwd(), 'src/database/migrations');
+    const directory = migrationDirectory();
     const files = (await readdir(directory)).filter((file) => file.endsWith('.sql')).sort();
     for (const file of files) {
       const name = file.replace(/\.sql$/, '');

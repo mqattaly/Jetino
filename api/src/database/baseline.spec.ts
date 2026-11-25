@@ -27,7 +27,9 @@ describe('migration baseline', () => {
 
   it('refuses to run without a database and without confirmation', async () => {
     const text = await source();
-    assert.match(text, /if \(!process\.env\.DATABASE_URL\) throw new Error\('DATABASE_URL must be set'\)/);
+    // the guard moved into requireDatabaseUrl(), which throws a message naming both DATABASE_URL and
+    // the split DB_* form a PaaS panel hands over — either way the script cannot run without a database
+    assert.match(text, /new Client\(\{ connectionString: requireDatabaseUrl\(\) \}\)/);
     assert.match(text, /process\.env\.BASELINE_CONFIRM === 'yes'/);
     assert.match(text, /if \(!confirmed\) \{[^}]*process\.exitCode = 1/s, 'a dry run must fail the command so nobody mistakes it for a baseline');
   });

@@ -185,3 +185,42 @@ jobs:
             echo '```'
           } > "$RUNNER_TEMP/backup-drill-comment.md"
           gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/backup-drill-comment.md"
+
+  docker-image:
+    name: Docker image (Chabakan target)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # the container is what actually ships to Chabakan, and a Dockerfile that nobody builds
+    # rots quietly: this proves the two-stage build works, that the entrypoint starts without
+    # a database, and that one process really serves both the API and the client-side routes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the image
+        run: docker build --tag jetino:ci .
+      - name: Boot it and probe both halves
+        run: |
+          docker run --detach --name jetino \
+            --publish 3000:3000 \
+            --env SKIP_MIGRATIONS=1 \
+            --env JWT_SECRET=ci-only-secret-ci-only-secret-123456 \
+            --env OTP_HMAC_SECRET=ci-only-otp-ci-only-otp-123456789 \
+            jetino:ci
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://localhost:3000/api/v1/health 2>/dev/null | grep -q '"status":"ok"'; then break; fi
+            sleep 2
+          done
+          curl -fsS http://localhost:3000/api/v1/health
+          # one origin: the shell must answer `/` and a client-side route, and a missing asset
+          # must stay a 404 rather than turn into HTML
+          curl -fsS http://localhost:3000/ | grep -q 'id="root"'
+          curl -fsS http://localhost:3000/admin | grep -q 'id="root"'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/nope.js)" = "404"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/api/v1/nope)" = "404"
+          curl -sI http://localhost:3000/sw.js | grep -qi 'no-store'
+      - name: Show the container log
+        if: always()
+        run: docker logs jetino || true
+      - name: Clean up
+        if: always()
+        run: docker rm --force jetino || true
