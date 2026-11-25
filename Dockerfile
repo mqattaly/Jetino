@@ -25,6 +25,10 @@ COPY vite.config.ts index.html ./
 COPY src ./src
 COPY public ./public
 
+# بک‌اند سورس و tsconfig خودش را دارد؛ بدون این دو خط، `api run build` روی tsconfig.build.json می‌شکند
+COPY api/tsconfig.json api/tsconfig.build.json ./api/
+COPY api/src ./api/src
+
 # کلید عمومی نقشه در زمان build داخل باندل می‌رود (متغیر Vite است، نه runtime)
 ARG VITE_NESHAN_API_KEY=""
 ENV VITE_NESHAN_API_KEY=${VITE_NESHAN_API_KEY}
